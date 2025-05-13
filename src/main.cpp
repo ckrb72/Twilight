@@ -157,9 +157,112 @@ int main()
     {
         glfwPollEvents();
 
+        VulkanFrameData* frame = &context.frames[current_frame];
+        VkCommandBuffer cmd = frame->cmd_buffer;
 
+        // Wait for fence to be signaled (if first loop fence is already signaled)
+        VK_CHECK(vkWaitForFences(context.device, 1, &frame->render_fence, true, UINT64_MAX));
+        // Here Fence is signaled
+
+        // Reset Fence to unsignaled
+        VK_CHECK(vkResetFences(context.device, 1, &frame->render_fence));
+
+        // Acquire swapchain image. Swapchain_semaphore will be signaled once it has been acquired
+        uint32_t swapchain_index;
+        VK_CHECK(vkAcquireNextImageKHR(context.device, context.swapchain.swapchain, UINT64_MAX, frame->swapchain_semaphore, nullptr, &swapchain_index))
+
+        VkImage swapchain_image = context.swapchain.images[swapchain_index];
+        
+
+        VkCommandBufferBeginInfo cmd_info = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+        };
+
+        VK_CHECK(vkBeginCommandBuffer(cmd, &cmd_info));
+
+        // Transition Image to presentable layout
+        VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+
+        VkImageSubresourceRange sub_image = {
+            .aspectMask = aspect,
+            .baseMipLevel = 0,
+            .levelCount = VK_REMAINING_MIP_LEVELS,
+            .baseArrayLayer = 0,
+            .layerCount = VK_REMAINING_ARRAY_LAYERS 
+        };
+
+        VkImageMemoryBarrier2 image_barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .dstAccessMask = VK_ACCESS_2_NONE,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            .image = swapchain_image,
+            .subresourceRange = sub_image
+        };
+
+        VkDependencyInfo dep_info = {
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .imageMemoryBarrierCount = 1,
+            .pImageMemoryBarriers = &image_barrier
+        };
+
+        vkCmdPipelineBarrier2(cmd, &dep_info);
+
+        VK_CHECK(vkEndCommandBuffer(cmd));
+        
+        // Submit the commands to the command buffer
+        VkCommandBufferSubmitInfo cmd_submit_info = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+            .commandBuffer = cmd,
+            .deviceMask = 0
+        };
+
+        VkSemaphoreSubmitInfo wait_info = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = frame->swapchain_semaphore,
+            .value = 1,
+            .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR,
+            .deviceIndex = 0
+        };
+
+        VkSemaphoreSubmitInfo signal_info = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = frame->render_semaphore,
+            .value = 1,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR,
+            .deviceIndex = 0
+        };
+
+        VkSubmitInfo2 submit_info = {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .waitSemaphoreInfoCount = 1,
+            .pWaitSemaphoreInfos = &wait_info,
+            .commandBufferInfoCount = 1,
+            .pCommandBufferInfos = &cmd_submit_info,
+            .signalSemaphoreInfoCount = 1,
+            .pSignalSemaphoreInfos = &signal_info
+        };
+
+        // Submits commands to queue and sets fence to signal when done
+        VK_CHECK(vkQueueSubmit2(context.graphics_queue.queue, 1, &submit_info, frame->render_fence));
+
+        VkPresentInfoKHR present_info = {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &frame->render_semaphore,
+            .swapchainCount = 1,
+            .pSwapchains = &context.swapchain.swapchain,
+            .pImageIndices = &swapchain_index
+        };
+        VK_CHECK(vkQueuePresentKHR(context.graphics_queue.queue, &present_info));
         current_frame += (current_frame + 1) % FLIGHT_COUNT;
     }
+
+    vkDeviceWaitIdle(context.device);
 
     vkDestroyPipeline(context.device, pipeline, nullptr);
     vkDestroyPipelineLayout(context.device, pipeline_layout, nullptr);

@@ -58,7 +58,11 @@ VulkanContext init_vulkan(void* win, uint32_t width, uint32_t height)
         .device = device.device,
         .physical_device = gpu.physical_device,
         .surface = surface,
-        .debug_messenger = instance.debug_messenger
+        .debug_messenger = instance.debug_messenger,
+        .graphics_queue = {
+            .queue = device.get_queue(vkb::QueueType::graphics).value(),
+            .family = device.get_queue_index(vkb::QueueType::graphics).value(),
+        }
     };
 
     create_swapchain(context, width, height);
