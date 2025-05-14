@@ -34,7 +34,7 @@ int main()
 
     VkPipelineInputAssemblyStateCreateInfo input_assembler = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST,
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
         .primitiveRestartEnable = VK_FALSE
     };
 
@@ -172,7 +172,6 @@ int main()
         VK_CHECK(vkAcquireNextImageKHR(context.device, context.swapchain.swapchain, UINT64_MAX, frame->swapchain_semaphore, nullptr, &swapchain_index))
 
         VkImage swapchain_image = context.swapchain.images[swapchain_index];
-        
 
         VkCommandBufferBeginInfo cmd_info = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -181,9 +180,8 @@ int main()
 
         VK_CHECK(vkBeginCommandBuffer(cmd, &cmd_info));
 
-        // Transition Image to presentable layout
-        VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-
+                VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+        
         VkImageSubresourceRange sub_image = {
             .aspectMask = aspect,
             .baseMipLevel = 0,
@@ -195,11 +193,11 @@ int main()
         VkImageMemoryBarrier2 image_barrier = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            .srcAccessMask = VK_ACCESS_2_NONE,
             .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .dstAccessMask = VK_ACCESS_2_NONE,
+            .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT,
             .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             .image = swapchain_image,
             .subresourceRange = sub_image
         };
@@ -211,6 +209,79 @@ int main()
         };
 
         vkCmdPipelineBarrier2(cmd, &dep_info);
+
+        VkRenderingAttachmentInfo color_attachment_info = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = context.swapchain.views[swapchain_index],
+            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue = {
+                .color = {0.1, 0.1, 0.1, 1.0}
+            }
+        };
+
+        VkRenderingInfo render_info = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea = VkRect2D{ {0, 0}, {context.swapchain.extent.width, context.swapchain.extent.height} },
+            .layerCount = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &color_attachment_info
+        };
+
+        vkCmdBeginRendering(cmd, &render_info);
+
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+
+        VkViewport viewport = {
+            .x = 0,
+            .y = 0,
+            .width = (float)context.swapchain.extent.width,
+            .height = (float)context.swapchain.extent.height,
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f
+        };
+
+        VkRect2D scissor = {};
+        scissor.extent = context.swapchain.extent;
+        scissor.offset = VkOffset2D{0, 0};
+
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+        vkCmdDraw(cmd, 3, 1, 0, 0);
+
+        vkCmdEndRendering(cmd);
+
+        // Transition Image to presentable layout
+
+        VkImageSubresourceRange sub_image2 = {
+            .aspectMask = aspect,
+            .baseMipLevel = 0,
+            .levelCount = VK_REMAINING_MIP_LEVELS,
+            .baseArrayLayer = 0,
+            .layerCount = VK_REMAINING_ARRAY_LAYERS 
+        };
+
+        VkImageMemoryBarrier2 image_barrier2 = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .dstAccessMask = VK_ACCESS_2_NONE,
+            .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            .image = swapchain_image,
+            .subresourceRange = sub_image2
+        };
+
+        VkDependencyInfo dep_info2 = {
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .imageMemoryBarrierCount = 1,
+            .pImageMemoryBarriers = &image_barrier2
+        };
+
+        vkCmdPipelineBarrier2(cmd, &dep_info2);
 
         VK_CHECK(vkEndCommandBuffer(cmd));
         

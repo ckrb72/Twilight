@@ -59,6 +59,8 @@ bool validate_vulkan(const VulkanContext& context);
 void destroy_vulkan(VulkanContext& context);
 void recreate_swapchain(VulkanContext& context, uint32_t width, uint32_t height);
 
+/* Object Creation */
+
 
 /* Rendering */
 void vulkan_begin();
