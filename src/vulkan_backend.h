@@ -71,6 +71,8 @@ struct VulkanImage
     VkImageView view;
     VmaAllocation allocation;
     VmaAllocationInfo info;
+    VkFormat format;
+    uint32_t width, height, depth;
 };
 
 /* Init */

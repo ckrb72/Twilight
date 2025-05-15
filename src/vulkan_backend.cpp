@@ -5,6 +5,7 @@
 
 static void create_swapchain(VulkanContext& context, uint32_t width, uint32_t height);
 static void destroy_swapchain(VulkanContext& context);
+static void vulkan_create_mipmaps(const VulkanContext& context, const VulkanImage& image);
 
 VulkanContext init_vulkan(void* win, uint32_t width, uint32_t height)
 {
@@ -222,18 +223,19 @@ VulkanImage vulkan_create_image(const VulkanContext& context, VkExtent3D size, V
 {
     VkImageCreateInfo image_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
         .format = format,
         .extent = size,
         .mipLevels = 1,
         .arrayLayers = 1,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .tiling = VK_IMAGE_TILING_OPTIMAL,
-        .usage = usage
+        .usage = usage,
     };
 
     if(mipmapped)
     {
-        image_info.mipLevels = (uint32_t)std::floor(std::log2(std::max(size.width, size.height))) + 1;
+        image_info.mipLevels = (uint32_t)(std::floor(std::log2(std::max(size.width, size.height))) + 1);
     }
 
     VmaAllocationCreateInfo alloc_info = {
@@ -241,7 +243,7 @@ VulkanImage vulkan_create_image(const VulkanContext& context, VkExtent3D size, V
         .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
     };
 
-    VulkanImage image = {};
+    VulkanImage image = { .format = format, .width = size.width, .height = size.height, .depth = size.height };
 
     VK_CHECK(vmaCreateImage(context.allocator, &image_info, &alloc_info, &image.image, &image.allocation, &image.info));
 
@@ -264,7 +266,130 @@ VulkanImage vulkan_create_image(const VulkanContext& context, VkExtent3D size, V
 
     VK_CHECK(vkCreateImageView(context.device, &view_info, nullptr, &image.view));
 
+    // Shouldn't actually mipmap here... should wait until data is in image
+    //vulkan_create_mipmaps(context, image);
+
     return image;
+}
+
+static void vulkan_create_mipmaps(const VulkanContext& context, const VulkanImage& image)
+{
+    uint32_t mip_levels = (uint32_t)(std::floor(std::log2(std::max(image.width, image.height))) + 1);
+
+    vulkan_immediate_begin(context);
+
+    // Transfer to VK_IMAGE_LAYOUT_TRANSFER_SRC
+    VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+        
+    // Only transition the base mip level
+    VkImageSubresourceRange sub_image = {
+        .aspectMask = aspect,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = 1
+    };
+
+    VkImageMemoryBarrier2 image_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        .image = image.image,
+        .subresourceRange = sub_image
+    };
+
+    VkDependencyInfo dep_info = {
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &image_barrier
+    };
+
+    vkCmdPipelineBarrier2(context.immediate_buffer, &dep_info);
+
+    // Blit down successive mip levels
+    for(uint32_t i = 1; i < mip_levels; i++)
+    {
+        // Transition mip level we are bliting to transfer_dst_optimal
+        VkImageSubresourceRange dst_sub_image = {
+            .aspectMask = aspect,
+            .baseMipLevel = i,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        };
+
+        VkImageMemoryBarrier2 dst_image_barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .srcAccessMask = 0,
+            .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .image = image.image,
+            .subresourceRange = dst_sub_image
+        };
+
+        VkDependencyInfo dst_dep_info = {
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .imageMemoryBarrierCount = 1,
+            .pImageMemoryBarriers = &dst_image_barrier
+        };
+
+        vkCmdPipelineBarrier2(context.immediate_buffer, &dst_dep_info);
+
+        // Blit level n - 1 to level n
+        VkImageBlit blit = {};
+        blit.srcOffsets[1] = { (int32_t)(image.width >> (i - 1)), (int32_t)(image.height >> (i - 1)), 1 };
+        blit.srcSubresource = {
+            .aspectMask = aspect,
+            .mipLevel = i - 1,
+            .layerCount = 1,
+        };
+        blit.dstOffsets[1] = { (int32_t)(image.width >> i), (int32_t)(image.height >> i), 1 };
+        blit.dstSubresource = {
+            .aspectMask = aspect,
+            .mipLevel = i,
+            .layerCount = 1
+        };
+
+        vkCmdBlitImage(context.immediate_buffer, image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+
+        // Transition level n to transfer_src_optimal for next loop
+        VkImageSubresourceRange src_sub_image = {
+            .aspectMask = aspect,
+            .baseMipLevel = i,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        };
+
+        VkImageMemoryBarrier2 src_image_barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .srcAccessMask = 0,
+            .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .image = image.image,
+            .subresourceRange = src_sub_image
+        };
+
+        VkDependencyInfo src_dep_info = {
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .imageMemoryBarrierCount = 1,
+            .pImageMemoryBarriers = &src_image_barrier
+        };
+
+        vkCmdPipelineBarrier2(context.immediate_buffer, &src_dep_info);
+    }
+
+    vulkan_immediate_end(context);
 }
 
 void vulkan_destroy_image(const VulkanContext& context, VulkanImage& image)

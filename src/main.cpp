@@ -193,6 +193,9 @@ int main()
 
     vulkan_destroy_buffer(context, staging_buffer);
 
+    std::cout << "Creating image" << std::endl;
+    VulkanImage image = vulkan_create_image(context, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, true);
+    vulkan_destroy_image(context, image);
 
     uint32_t current_frame = 0;
 
