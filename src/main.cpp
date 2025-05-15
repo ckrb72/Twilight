@@ -95,8 +95,25 @@ int main()
         .pAttachments = &blend_attachment
     };
 
+    VkVertexInputBindingDescription binding_description = {
+        .binding = 0,
+        .stride = 3 * sizeof(float),
+        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+    };
+
+    VkVertexInputAttributeDescription pos_attrib = {
+        .location = 0,
+        .binding = 0,
+        .format = VK_FORMAT_R32G32B32_SFLOAT,
+        .offset = 0
+    };
+
     VkPipelineVertexInputStateCreateInfo vertex_input_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .vertexBindingDescriptionCount = 1,
+        .pVertexBindingDescriptions = &binding_description,
+        .vertexAttributeDescriptionCount = 1,
+        .pVertexAttributeDescriptions = &pos_attrib
     };
 
     VkDynamicState state[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
@@ -149,6 +166,32 @@ int main()
 
     vkDestroyShaderModule(context.device, vertex_shader, nullptr);
     vkDestroyShaderModule(context.device, fragment_shader, nullptr);
+
+    VkBufferCreateInfo vert_buf_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = 3 * 3 * sizeof(float),
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+    };
+
+    VmaAllocationCreateInfo vert_buf_alloc_info = {
+        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        .usage = VMA_MEMORY_USAGE_CPU_ONLY
+    };
+
+    VkBuffer vertex_buffer;
+    VmaAllocation vertex_allocation;
+    VmaAllocationInfo vertex_info;
+    vmaCreateBuffer(context.allocator, &vert_buf_info, &vert_buf_alloc_info, &vertex_buffer, &vertex_allocation, &vertex_info);
+
+    float vertices[] =
+    {
+        -0.5, 0.5, 0.0,
+        0.5, 0.5, 0.0,
+        0.0, -0.5, 0.0
+    };
+
+    void* vert_ptr = vertex_info.pMappedData;
+    memcpy(vert_ptr, vertices, sizeof(vertices));
 
 
     uint32_t current_frame = 0;
@@ -230,7 +273,6 @@ int main()
         };
 
         vkCmdBeginRendering(cmd, &render_info);
-
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
         VkViewport viewport = {
@@ -241,14 +283,14 @@ int main()
             .minDepth = 0.0f,
             .maxDepth = 1.0f
         };
-
         VkRect2D scissor = {};
         scissor.extent = context.swapchain.extent;
         scissor.offset = VkOffset2D{0, 0};
-
         vkCmdSetViewport(cmd, 0, 1, &viewport);
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer, offsets);
         vkCmdDraw(cmd, 3, 1, 0, 0);
 
         vkCmdEndRendering(cmd);
@@ -334,6 +376,8 @@ int main()
     }
 
     vkDeviceWaitIdle(context.device);
+
+    vmaDestroyBuffer(context.allocator, vertex_buffer, vertex_allocation);
 
     vkDestroyPipeline(context.device, pipeline, nullptr);
     vkDestroyPipelineLayout(context.device, pipeline_layout, nullptr);

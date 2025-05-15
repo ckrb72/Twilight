@@ -59,6 +59,7 @@ VulkanContext init_vulkan(void* win, uint32_t width, uint32_t height)
         .physical_device = gpu.physical_device,
         .surface = surface,
         .debug_messenger = instance.debug_messenger,
+        .allocator = allocator,
         .graphics_queue = {
             .queue = device.get_queue(vkb::QueueType::graphics).value(),
             .family = device.get_queue_index(vkb::QueueType::graphics).value(),
@@ -121,6 +122,8 @@ void destroy_vulkan(VulkanContext& context)
         vkDestroySemaphore(context.device, context.frames[i].swapchain_semaphore, nullptr);
         vkDestroyFence(context.device, context.frames[i].render_fence, nullptr);
     }
+
+    vmaDestroyAllocator(context.allocator);
 
     destroy_swapchain(context);
     vkDestroySurfaceKHR(context.instance, context.surface, nullptr);

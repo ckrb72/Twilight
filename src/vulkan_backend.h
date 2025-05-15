@@ -3,6 +3,7 @@
 #include <iostream>
 #include <vulkan/vk_enum_string_helper.h>
 #include <vector>
+#include "vma.h"
 
 #define VK_CHECK(x)                                                     \
     do {                                                                \
@@ -42,6 +43,7 @@ struct VulkanContext
     VkSurfaceKHR surface;
     VkDebugUtilsMessengerEXT debug_messenger;
     VulkanSwapchain swapchain;
+    VmaAllocator allocator;
     VulkanFrameData frames[FLIGHT_COUNT];
 
     struct VulkanQueue
