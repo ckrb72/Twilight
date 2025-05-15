@@ -102,6 +102,17 @@ VulkanContext init_vulkan(void* win, uint32_t width, uint32_t height)
         VK_CHECK(vkCreateFence(context.device, &fence_info, nullptr, &context.frames[i].render_fence));
     }
 
+    VK_CHECK(vkCreateFence(context.device, &fence_info, nullptr, &context.immediate_fence));
+    VK_CHECK(vkCreateCommandPool(context.device, &cmd_pool_info, nullptr, &context.immediate_pool));
+
+    VkCommandBufferAllocateInfo cmd_buf_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = context.immediate_pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1
+    };
+    VK_CHECK(vkAllocateCommandBuffers(context.device, &cmd_buf_info, &context.immediate_buffer));
+
     return context;
 }
 
@@ -122,6 +133,9 @@ void destroy_vulkan(VulkanContext& context)
         vkDestroySemaphore(context.device, context.frames[i].swapchain_semaphore, nullptr);
         vkDestroyFence(context.device, context.frames[i].render_fence, nullptr);
     }
+    
+    vkDestroyCommandPool(context.device, context.immediate_pool, nullptr);
+    vkDestroyFence(context.device, context.immediate_fence, nullptr);
 
     vmaDestroyAllocator(context.allocator);
 
@@ -173,4 +187,128 @@ static void destroy_swapchain(VulkanContext& context)
     {
         vkDestroyImageView(context.device, view, nullptr);
     }
+}
+
+
+VulkanBuffer vulkan_create_buffer(const VulkanContext& context, uint64_t size, VkBufferUsageFlags usage, VmaMemoryUsage alloc_usage)
+{
+    VkBufferCreateInfo buf_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = size,
+        .usage = usage
+    };
+
+    VmaAllocationCreateInfo alloc_info = {
+        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        .usage = alloc_usage
+    };
+
+    VulkanBuffer buffer = {};
+    VK_CHECK(vmaCreateBuffer(context.allocator, &buf_info, &alloc_info, &buffer.buffer, &buffer.allocation, &buffer.info));
+    
+    return buffer;
+}
+
+void vulkan_destroy_buffer(const VulkanContext& context, VulkanBuffer& buffer)
+{
+    vmaDestroyBuffer(context.allocator, buffer.buffer, buffer.allocation);
+
+    buffer.allocation = nullptr;
+    buffer.buffer = VK_NULL_HANDLE;
+    buffer.info = {};
+}
+
+VulkanImage vulkan_create_image(const VulkanContext& context, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
+{
+    VkImageCreateInfo image_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .format = format,
+        .extent = size,
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = usage
+    };
+
+    if(mipmapped)
+    {
+        image_info.mipLevels = (uint32_t)std::floor(std::log2(std::max(size.width, size.height))) + 1;
+    }
+
+    VmaAllocationCreateInfo alloc_info = {
+        .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+        .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+    };
+
+    VulkanImage image = {};
+
+    VK_CHECK(vmaCreateImage(context.allocator, &image_info, &alloc_info, &image.image, &image.allocation, &image.info));
+
+    VkImageViewCreateInfo view_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = image.image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = format
+    };
+
+    VkImageAspectFlags aspect = (usage == VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+
+    view_info.subresourceRange = {
+        .aspectMask = aspect,
+        .baseMipLevel = 0,
+        .levelCount = image_info.mipLevels,
+        .baseArrayLayer = 0,
+        .layerCount = 1
+    };
+
+    VK_CHECK(vkCreateImageView(context.device, &view_info, nullptr, &image.view));
+
+    return image;
+}
+
+void vulkan_destroy_image(const VulkanContext& context, VulkanImage& image)
+{
+    vkDestroyImageView(context.device, image.view, nullptr);
+    vmaDestroyImage(context.allocator, image.image, image.allocation);
+
+    image.image = VK_NULL_HANDLE;
+    image.view = VK_NULL_HANDLE;
+    image.allocation = nullptr;
+    image.info = {};
+}
+
+void vulkan_immediate_begin(const VulkanContext& context)
+{
+
+    VK_CHECK(vkResetFences(context.device, 1, &context.immediate_fence));
+    VK_CHECK(vkResetCommandBuffer(context.immediate_buffer, 0));
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    };
+
+    VK_CHECK(vkBeginCommandBuffer(context.immediate_buffer, &begin_info));
+}
+
+void vulkan_immediate_end(const VulkanContext& context)
+{
+    VK_CHECK(vkEndCommandBuffer(context.immediate_buffer));
+
+    VkCommandBufferSubmitInfo buffer_submit_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+        .commandBuffer = context.immediate_buffer,
+        .deviceMask = 0
+    };
+
+    VkSubmitInfo2 submit_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+        .commandBufferInfoCount = 1,
+        .pCommandBufferInfos = &buffer_submit_info
+    };
+
+    VK_CHECK(vkQueueSubmit2(context.graphics_queue.queue, 1, &submit_info, context.immediate_fence));
+    VK_CHECK(vkWaitForFences(context.device, 1, &context.immediate_fence, true, UINT64_MAX));
+
 }

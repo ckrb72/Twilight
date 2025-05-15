@@ -167,21 +167,8 @@ int main()
     vkDestroyShaderModule(context.device, vertex_shader, nullptr);
     vkDestroyShaderModule(context.device, fragment_shader, nullptr);
 
-    VkBufferCreateInfo vert_buf_info = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = 3 * 3 * sizeof(float),
-        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
-    };
 
-    VmaAllocationCreateInfo vert_buf_alloc_info = {
-        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
-        .usage = VMA_MEMORY_USAGE_CPU_ONLY
-    };
-
-    VkBuffer vertex_buffer;
-    VmaAllocation vertex_allocation;
-    VmaAllocationInfo vertex_info;
-    vmaCreateBuffer(context.allocator, &vert_buf_info, &vert_buf_alloc_info, &vertex_buffer, &vertex_allocation, &vertex_info);
+    VulkanBuffer staging_buffer = vulkan_create_buffer(context, 3 * 3 * sizeof(float), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
     float vertices[] =
     {
@@ -190,8 +177,21 @@ int main()
         0.0, -0.5, 0.0
     };
 
-    void* vert_ptr = vertex_info.pMappedData;
+    void* vert_ptr = staging_buffer.info.pMappedData;
     memcpy(vert_ptr, vertices, sizeof(vertices));
+
+    VulkanBuffer vertex_buffer = vulkan_create_buffer(context, 3 * 3 * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+
+    vulkan_immediate_begin(context);
+    VkBufferCopy copy_info = {
+        .srcOffset = 0,
+        .dstOffset = 0,
+        .size = 3 * 3 * sizeof(float),
+    };
+    vkCmdCopyBuffer(context.immediate_buffer, staging_buffer.buffer, vertex_buffer.buffer, 1, &copy_info);
+    vulkan_immediate_end(context);
+
+    vulkan_destroy_buffer(context, staging_buffer);
 
 
     uint32_t current_frame = 0;
@@ -216,14 +216,15 @@ int main()
 
         VkImage swapchain_image = context.swapchain.images[swapchain_index];
 
+        VK_CHECK(vkResetCommandBuffer(cmd, 0));
+
         VkCommandBufferBeginInfo cmd_info = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
         };
 
         VK_CHECK(vkBeginCommandBuffer(cmd, &cmd_info));
-
-                VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+        VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
         
         VkImageSubresourceRange sub_image = {
             .aspectMask = aspect,
@@ -290,7 +291,7 @@ int main()
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
         VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer, offsets);
+        vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer.buffer, offsets);
         vkCmdDraw(cmd, 3, 1, 0, 0);
 
         vkCmdEndRendering(cmd);
@@ -377,7 +378,7 @@ int main()
 
     vkDeviceWaitIdle(context.device);
 
-    vmaDestroyBuffer(context.allocator, vertex_buffer, vertex_allocation);
+    vulkan_destroy_buffer(context, vertex_buffer);
 
     vkDestroyPipeline(context.device, pipeline, nullptr);
     vkDestroyPipelineLayout(context.device, pipeline_layout, nullptr);

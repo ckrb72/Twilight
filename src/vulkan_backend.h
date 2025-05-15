@@ -45,6 +45,9 @@ struct VulkanContext
     VulkanSwapchain swapchain;
     VmaAllocator allocator;
     VulkanFrameData frames[FLIGHT_COUNT];
+    VkCommandPool immediate_pool;
+    VkCommandBuffer immediate_buffer;
+    VkFence immediate_fence;
 
     struct VulkanQueue
     {
@@ -55,6 +58,21 @@ struct VulkanContext
     VulkanQueue graphics_queue;
 };
 
+struct VulkanBuffer
+{
+    VkBuffer buffer;
+    VmaAllocation allocation;
+    VmaAllocationInfo info;
+};
+
+struct VulkanImage
+{
+    VkImage image;
+    VkImageView view;
+    VmaAllocation allocation;
+    VmaAllocationInfo info;
+};
+
 /* Init */
 VulkanContext init_vulkan(void* win, uint32_t width, uint32_t height);
 bool validate_vulkan(const VulkanContext& context);
@@ -62,9 +80,14 @@ void destroy_vulkan(VulkanContext& context);
 void recreate_swapchain(VulkanContext& context, uint32_t width, uint32_t height);
 
 /* Object Creation */
-
+VulkanBuffer vulkan_create_buffer(const VulkanContext& context, uint64_t size, VkBufferUsageFlags usage, VmaMemoryUsage alloc_usage);
+void vulkan_destroy_buffer(const VulkanContext& context, VulkanBuffer& buffer);
+VulkanImage vulkan_create_image(const VulkanContext& context, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped);
+void vulkan_destroy_image(const VulkanContext& context, VulkanImage& image);
 
 /* Rendering */
+void vulkan_immediate_begin(const VulkanContext& context);
+void vulkan_immediate_end(const VulkanContext& context);
 void vulkan_begin();
 void vulkan_end();
 
