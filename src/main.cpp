@@ -97,7 +97,7 @@ int main()
 
     VkVertexInputBindingDescription binding_description = {
         .binding = 0,
-        .stride = 3 * sizeof(float),
+        .stride = 5 * sizeof(float),
         .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
     };
 
@@ -108,12 +108,21 @@ int main()
         .offset = 0
     };
 
+    VkVertexInputAttributeDescription tex_attrib = {
+        .location = 1,
+        .binding = 0,
+        .format = VK_FORMAT_R32G32_SFLOAT,
+        .offset = 3 * sizeof(float)
+    };
+
+    VkVertexInputAttributeDescription attrib_descs[] = { pos_attrib, tex_attrib };
+
     VkPipelineVertexInputStateCreateInfo vertex_input_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .vertexBindingDescriptionCount = 1,
         .pVertexBindingDescriptions = &binding_description,
-        .vertexAttributeDescriptionCount = 1,
-        .pVertexAttributeDescriptions = &pos_attrib
+        .vertexAttributeDescriptionCount = 2,
+        .pVertexAttributeDescriptions = attrib_descs
     };
 
     VkDynamicState state[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
@@ -168,32 +177,31 @@ int main()
     vkDestroyShaderModule(context.device, fragment_shader, nullptr);
 
 
-    VulkanBuffer staging_buffer = vulkan_create_buffer(context, 3 * 3 * sizeof(float), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    VulkanBuffer staging_buffer = vulkan_create_buffer(context, 3 * 5 * sizeof(float), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
     float vertices[] =
     {
-        -0.5, 0.5, 0.0,
-        0.5, 0.5, 0.0,
-        0.0, -0.5, 0.0
+        -0.5, 0.5, 0.0,     0.0, 0.0,
+        0.5, 0.5, 0.0,      1.0, 0.0,
+        0.0, -0.5, 0.0,     0.5, 1.0
     };
 
     void* vert_ptr = staging_buffer.info.pMappedData;
     memcpy(vert_ptr, vertices, sizeof(vertices));
 
-    VulkanBuffer vertex_buffer = vulkan_create_buffer(context, 3 * 3 * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    VulkanBuffer vertex_buffer = vulkan_create_buffer(context, 3 * 5 * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
     vulkan_immediate_begin(context);
     VkBufferCopy copy_info = {
         .srcOffset = 0,
         .dstOffset = 0,
-        .size = 3 * 3 * sizeof(float),
+        .size = 3 * 5 * sizeof(float),
     };
     vkCmdCopyBuffer(context.immediate_buffer, staging_buffer.buffer, vertex_buffer.buffer, 1, &copy_info);
     vulkan_immediate_end(context);
 
     vulkan_destroy_buffer(context, staging_buffer);
 
-    std::cout << "Creating image" << std::endl;
     VulkanImage image = vulkan_create_image(context, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, true);
     vulkan_destroy_image(context, image);
 
