@@ -202,8 +202,20 @@ int main()
 
     vulkan_destroy_buffer(context, staging_buffer);
 
-    VulkanImage image = vulkan_create_image(context, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, true);
+    VulkanImage image = vulkan_create_image(context, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, true);
     vulkan_destroy_image(context, image);
+
+    std::vector<float> image_data = std::vector<float>(16);
+    for(int i = 0; i < 4; i += 4)
+    {
+        image_data[i + 0] = 1.0f;
+        image_data[i + 1] = 1.0f;
+        image_data[i + 2] = 0.0f;
+        image_data[i + 3] = 1.0f;
+    }
+
+    VulkanImage data_image = vulkan_create_image(context, image_data.data(), VkExtent3D{2, 2, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT, true);
+    vulkan_destroy_image(context, data_image);
 
     uint32_t current_frame = 0;
 

@@ -85,6 +85,7 @@ void recreate_swapchain(VulkanContext& context, uint32_t width, uint32_t height)
 VulkanBuffer vulkan_create_buffer(const VulkanContext& context, uint64_t size, VkBufferUsageFlags usage, VmaMemoryUsage alloc_usage);
 void vulkan_destroy_buffer(const VulkanContext& context, VulkanBuffer& buffer);
 VulkanImage vulkan_create_image(const VulkanContext& context, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped);
+VulkanImage vulkan_create_image(const VulkanContext& context, void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped);
 void vulkan_destroy_image(const VulkanContext& context, VulkanImage& image);
 
 /* Rendering */

@@ -5,7 +5,7 @@
 
 static void create_swapchain(VulkanContext& context, uint32_t width, uint32_t height);
 static void destroy_swapchain(VulkanContext& context);
-static void vulkan_create_mipmaps(const VulkanContext& context, const VulkanImage& image);
+static void vulkan_cmd_create_mipmaps(const VulkanContext& context, const VulkanImage& image);
 
 VulkanContext init_vulkan(void* win, uint32_t width, uint32_t height)
 {
@@ -236,6 +236,7 @@ VulkanImage vulkan_create_image(const VulkanContext& context, VkExtent3D size, V
     if(mipmapped)
     {
         image_info.mipLevels = (uint32_t)(std::floor(std::log2(std::max(size.width, size.height))) + 1);
+        image_info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     }
 
     VmaAllocationCreateInfo alloc_info = {
@@ -272,11 +273,105 @@ VulkanImage vulkan_create_image(const VulkanContext& context, VkExtent3D size, V
     return image;
 }
 
-static void vulkan_create_mipmaps(const VulkanContext& context, const VulkanImage& image)
+VulkanImage vulkan_create_image(const VulkanContext& context, void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
 {
-    uint32_t mip_levels = (uint32_t)(std::floor(std::log2(std::max(image.width, image.height))) + 1);
+    uint64_t data_size = size.width * size.height * size.depth * 4;
+    VulkanBuffer data_buffer = vulkan_create_buffer(context, data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    void* buffer_ptr = data_buffer.info.pMappedData;
+    memcpy(buffer_ptr, data, data_size);
+
+    VulkanImage image = vulkan_create_image(context, size, format, usage, mipmapped);
 
     vulkan_immediate_begin(context);
+
+    VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+
+    // Transition base mip level to be ready for transfer
+    VkImageSubresourceRange sub_image = {
+        .aspectMask = aspect,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = 1
+    };
+
+    VkImageMemoryBarrier2 image_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .srcAccessMask = VK_ACCESS_2_NONE,
+        .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .image = image.image,
+        .subresourceRange = sub_image
+    };
+
+    VkDependencyInfo dep_info = {
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &image_barrier
+    };
+
+    vkCmdPipelineBarrier2(context.immediate_buffer, &dep_info);
+
+
+    VkBufferImageCopy copy_info = {
+        .imageExtent = size,
+    };
+
+    copy_info.imageSubresource = {
+        .aspectMask = aspect,
+        .mipLevel = 0,
+        .baseArrayLayer = 0,
+        .layerCount = 1
+    };
+
+    vkCmdCopyBufferToImage(context.immediate_buffer, data_buffer.buffer, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_info);
+
+    if(mipmapped)
+    {
+        vulkan_cmd_create_mipmaps(context, image);
+    }
+
+    VkImageSubresourceRange post_mip_sub_image = {
+        .aspectMask = aspect,
+        .baseMipLevel = 0,
+        .levelCount = VK_REMAINING_MIP_LEVELS,
+        .baseArrayLayer = 0,
+        .layerCount = VK_REMAINING_ARRAY_LAYERS
+    };
+
+    VkImageMemoryBarrier2 post_mip_image_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .image = image.image,
+        .subresourceRange = post_mip_sub_image
+    };
+
+    VkDependencyInfo post_mip_dep_info = {
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &image_barrier
+    };
+
+    vkCmdPipelineBarrier2(context.immediate_buffer, &post_mip_dep_info);
+
+    vulkan_immediate_end(context);
+
+    vmaDestroyBuffer(context.allocator, data_buffer.buffer, data_buffer.allocation);
+
+    return image;
+}
+
+static void vulkan_cmd_create_mipmaps(const VulkanContext& context, const VulkanImage& image)
+{
+    uint32_t mip_levels = (uint32_t)(std::floor(std::log2(std::max(image.width, image.height))) + 1);
 
     // Transfer to VK_IMAGE_LAYOUT_TRANSFER_SRC
     VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -296,7 +391,7 @@ static void vulkan_create_mipmaps(const VulkanContext& context, const VulkanImag
         .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
         .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
         .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         .image = image.image,
         .subresourceRange = sub_image
@@ -371,9 +466,9 @@ static void vulkan_create_mipmaps(const VulkanContext& context, const VulkanImag
         VkImageMemoryBarrier2 src_image_barrier = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .srcAccessMask = 0,
+            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
             .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
             .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
             .image = image.image,
@@ -388,8 +483,6 @@ static void vulkan_create_mipmaps(const VulkanContext& context, const VulkanImag
 
         vkCmdPipelineBarrier2(context.immediate_buffer, &src_dep_info);
     }
-
-    vulkan_immediate_end(context);
 }
 
 void vulkan_destroy_image(const VulkanContext& context, VulkanImage& image)
