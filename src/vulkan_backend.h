@@ -75,6 +75,19 @@ struct VulkanImage
     uint32_t width, height, depth;
 };
 
+struct VulkanMesh
+{
+    VulkanBuffer vert_buf;
+    VulkanBuffer indx_buf;
+    std::vector<std::string> tex_id;
+};
+
+struct VulkanModel
+{
+    std::vector<VulkanMesh> meshes;
+    std::vector<VulkanModel> children;
+};
+
 /* Init */
 VulkanContext init_vulkan(void* win, uint32_t width, uint32_t height);
 bool validate_vulkan(const VulkanContext& context);

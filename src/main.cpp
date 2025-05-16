@@ -26,8 +26,27 @@ int main()
     VulkanContext context = init_vulkan(window, WIN_WIDTH, WIN_HEIGHT);
     assert(validate_vulkan(context));
 
+    VkDescriptorSetLayoutBinding descriptor_binding = {
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+    };
+
+    VkDescriptorSetLayoutCreateInfo descriptor_layout_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings = &descriptor_binding
+    };
+
+    VkDescriptorSetLayout descriptor_layout;
+    VK_CHECK(vkCreateDescriptorSetLayout(context.device, &descriptor_layout_info, nullptr, &descriptor_layout));
+
+
     VkPipelineLayoutCreateInfo pipeline_layout_info = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1,
+        .pSetLayouts = &descriptor_layout
     };
     VkPipelineLayout pipeline_layout;
     VK_CHECK(vkCreatePipelineLayout(context.device, &pipeline_layout_info, nullptr, &pipeline_layout));
@@ -176,6 +195,67 @@ int main()
     vkDestroyShaderModule(context.device, vertex_shader, nullptr);
     vkDestroyShaderModule(context.device, fragment_shader, nullptr);
 
+    VkDescriptorPoolSize pool_sizes[] = {
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1}
+    };
+
+    VkDescriptorPoolCreateInfo descriptor_pool_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = 1,
+        .poolSizeCount = 1,
+        .pPoolSizes = pool_sizes
+    };
+
+    VkDescriptorPool descriptor_pool;
+    VK_CHECK(vkCreateDescriptorPool(context.device, &descriptor_pool_info, nullptr, &descriptor_pool));
+
+    VkDescriptorSetAllocateInfo descriptor_set_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &descriptor_layout,
+    };
+
+    VkDescriptorSet descriptor_set;
+    VK_CHECK(vkAllocateDescriptorSets(context.device, &descriptor_set_info, &descriptor_set));
+
+    std::vector<uint8_t> image_data = std::vector<uint8_t>(16);
+    for(int i = 0; i < 16; i += 4)
+    {
+        image_data[i + 0] = 127;
+        image_data[i + 1] = 63;
+        image_data[i + 2] = 255;
+        image_data[i + 3] = 255;
+    }
+
+    VulkanImage data_image = vulkan_create_image(context, image_data.data(), VkExtent3D{2, 2, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, true);
+
+    VkSamplerCreateInfo sampler_info = {
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = VK_FILTER_NEAREST,
+        .minFilter = VK_FILTER_NEAREST
+    };
+
+    VkSampler sampler;
+    VK_CHECK(vkCreateSampler(context.device, &sampler_info, nullptr, &sampler));
+
+    VkDescriptorImageInfo image_info = {
+        .sampler = sampler,
+        .imageView = data_image.view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    };
+
+    VkWriteDescriptorSet write_info = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = descriptor_set,
+        .dstBinding = 0,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo = &image_info
+    };
+
+    vkUpdateDescriptorSets(context.device, 1, &write_info, 0, nullptr);
+
 
     VulkanBuffer staging_buffer = vulkan_create_buffer(context, 3 * 5 * sizeof(float), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
@@ -201,21 +281,6 @@ int main()
     vulkan_immediate_end(context);
 
     vulkan_destroy_buffer(context, staging_buffer);
-
-    VulkanImage image = vulkan_create_image(context, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, true);
-    vulkan_destroy_image(context, image);
-
-    std::vector<float> image_data = std::vector<float>(16);
-    for(int i = 0; i < 4; i += 4)
-    {
-        image_data[i + 0] = 1.0f;
-        image_data[i + 1] = 1.0f;
-        image_data[i + 2] = 0.0f;
-        image_data[i + 3] = 1.0f;
-    }
-
-    VulkanImage data_image = vulkan_create_image(context, image_data.data(), VkExtent3D{2, 2, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT, true);
-    vulkan_destroy_image(context, data_image);
 
     uint32_t current_frame = 0;
 
@@ -315,6 +380,7 @@ int main()
 
         VkDeviceSize offsets[] = {0};
         vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer.buffer, offsets);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
         vkCmdDraw(cmd, 3, 1, 0, 0);
 
         vkCmdEndRendering(cmd);
@@ -402,9 +468,13 @@ int main()
     vkDeviceWaitIdle(context.device);
 
     vulkan_destroy_buffer(context, vertex_buffer);
+    vulkan_destroy_image(context, data_image);
 
     vkDestroyPipeline(context.device, pipeline, nullptr);
     vkDestroyPipelineLayout(context.device, pipeline_layout, nullptr);
+    vkDestroyDescriptorSetLayout(context.device, descriptor_layout, nullptr);
+    vkDestroyDescriptorPool(context.device, descriptor_pool, nullptr);
+    vkDestroySampler(context.device, sampler, nullptr);
 
     destroy_vulkan(context);
 

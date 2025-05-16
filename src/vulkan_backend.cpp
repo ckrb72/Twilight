@@ -348,7 +348,7 @@ VulkanImage vulkan_create_image(const VulkanContext& context, void* data, VkExte
         .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
         .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
         .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         .image = image.image,
         .subresourceRange = post_mip_sub_image
@@ -357,9 +357,10 @@ VulkanImage vulkan_create_image(const VulkanContext& context, void* data, VkExte
     VkDependencyInfo post_mip_dep_info = {
         .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
         .imageMemoryBarrierCount = 1,
-        .pImageMemoryBarriers = &image_barrier
+        .pImageMemoryBarriers = &post_mip_image_barrier
     };
 
+    std::cout << "Final Barrier" << std::endl;
     vkCmdPipelineBarrier2(context.immediate_buffer, &post_mip_dep_info);
 
     vulkan_immediate_end(context);

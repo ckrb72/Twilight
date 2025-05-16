@@ -7,8 +7,15 @@ set(SOURCE_DIR "${CMAKE_SOURCE_DIR}/src")
 set(GLFW_BUILD_DOCS OFF BOOL "GLFW lib only")
 set(GLFW_INSTALL OFF CACHE BOOL "GLFW lib only")
 
+set(ASSIMP_BUILD_TESTS OFF BOOL "No ASSIMP Tests")
+set(ASSIMP_INSTALL OFF CACHE BOOL "No ASSIMP Install")
+set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "ASSIMP Warnings as Warnings")
+set(ASSIMP_BUILD_ASSIMP_VIEW OFF CACHE BOOL "No ASSIMP view")
+
+
 add_subdirectory(vendor/glfw)
 add_subdirectory(vendor/vk-bootstrap)
+add_subdirectory(vendor/assimp)
 add_compile_options(-Wno-nullability-completeness)
 
 file(GLOB_RECURSE SRC_CXX_FILES "${SOURCE_DIR}/*.cpp")
@@ -20,4 +27,4 @@ if(NOT Vulkan_LIBRARIES)
 endif()
 
 add_executable(renderer ${SRC_CXX_FILES})
-target_link_libraries(renderer Vulkan::Vulkan glfw vk-bootstrap::vk-bootstrap)
+target_link_libraries(renderer Vulkan::Vulkan glfw vk-bootstrap::vk-bootstrap assimp)
