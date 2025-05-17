@@ -65,6 +65,16 @@ struct VulkanBuffer
     VmaAllocationInfo info;
 };
 
+struct VulkanImageTransitionInfo
+{
+    VkAccessFlags2 src_access;
+    VkPipelineStageFlags2 src_stage;
+    VkAccessFlags2 dst_access;
+    VkPipelineStageFlags2 dst_stage;
+    VkImageLayout old_layout;
+    VkImageLayout new_layout;
+};
+
 struct VulkanImage
 {
     VkImage image;
@@ -104,12 +114,11 @@ void vulkan_destroy_image(const VulkanContext& context, VulkanImage& image);
 /* Rendering */
 void vulkan_immediate_begin(const VulkanContext& context);
 void vulkan_immediate_end(const VulkanContext& context);
-void vulkan_begin();
-void vulkan_end();
+void vulkan_frame_begin();
+void vulkan_frame_end();
 
-/* Object Creation */
-//VulkanPipeline create_pipeline();
-
+/* Misc. */
+void vulkan_cmd_transition_image(const VulkanContext& context, const VulkanImage& image, const VulkanImageTransitionInfo& info);
 
 /*
 class Twilight(or whatever name)

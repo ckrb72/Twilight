@@ -360,7 +360,6 @@ VulkanImage vulkan_create_image(const VulkanContext& context, void* data, VkExte
         .pImageMemoryBarriers = &post_mip_image_barrier
     };
 
-    std::cout << "Final Barrier" << std::endl;
     vkCmdPipelineBarrier2(context.immediate_buffer, &post_mip_dep_info);
 
     vulkan_immediate_end(context);
@@ -529,5 +528,4 @@ void vulkan_immediate_end(const VulkanContext& context)
 
     VK_CHECK(vkQueueSubmit2(context.graphics_queue.queue, 1, &submit_info, context.immediate_fence));
     VK_CHECK(vkWaitForFences(context.device, 1, &context.immediate_fence, true, UINT64_MAX));
-
 }
