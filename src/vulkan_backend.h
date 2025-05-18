@@ -118,7 +118,7 @@ void vulkan_frame_begin();
 void vulkan_frame_end();
 
 /* Misc. */
-void vulkan_cmd_transition_image(const VulkanContext& context, const VulkanImage& image, const VulkanImageTransitionInfo& info);
+void vulkan_cmd_transition_image(VkCommandBuffer cmd, VkImage image, const VulkanImageTransitionInfo& info, VkImageSubresourceRange sub_image);
 
 /*
 class Twilight(or whatever name)

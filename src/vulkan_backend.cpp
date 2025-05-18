@@ -267,9 +267,6 @@ VulkanImage vulkan_create_image(const VulkanContext& context, VkExtent3D size, V
 
     VK_CHECK(vkCreateImageView(context.device, &view_info, nullptr, &image.view));
 
-    // Shouldn't actually mipmap here... should wait until data is in image
-    //vulkan_create_mipmaps(context, image);
-
     return image;
 }
 
@@ -287,33 +284,17 @@ VulkanImage vulkan_create_image(const VulkanContext& context, void* data, VkExte
     VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 
     // Transition base mip level to be ready for transfer
-    VkImageSubresourceRange sub_image = {
-        .aspectMask = aspect,
-        .baseMipLevel = 0,
-        .levelCount = 1,
-        .baseArrayLayer = 0,
-        .layerCount = 1
+
+    VulkanImageTransitionInfo transition_info = {
+        .src_access = VK_ACCESS_2_NONE,
+        .src_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .dst_access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        .dst_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .new_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
     };
 
-    VkImageMemoryBarrier2 image_barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-        .srcAccessMask = VK_ACCESS_2_NONE,
-        .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-        .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .image = image.image,
-        .subresourceRange = sub_image
-    };
-
-    VkDependencyInfo dep_info = {
-        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-        .imageMemoryBarrierCount = 1,
-        .pImageMemoryBarriers = &image_barrier
-    };
-
-    vkCmdPipelineBarrier2(context.immediate_buffer, &dep_info);
+    vulkan_cmd_transition_image(context.immediate_buffer, image.image, transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 
 
     VkBufferImageCopy copy_info = {
@@ -334,33 +315,16 @@ VulkanImage vulkan_create_image(const VulkanContext& context, void* data, VkExte
         vulkan_cmd_create_mipmaps(context, image);
     }
 
-    VkImageSubresourceRange post_mip_sub_image = {
-        .aspectMask = aspect,
-        .baseMipLevel = 0,
-        .levelCount = VK_REMAINING_MIP_LEVELS,
-        .baseArrayLayer = 0,
-        .layerCount = VK_REMAINING_ARRAY_LAYERS
+    VulkanImageTransitionInfo shader_transition_info = {
+        .src_access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        .src_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .dst_access = VK_ACCESS_2_SHADER_READ_BIT,
+        .dst_stage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        .old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .new_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
-    VkImageMemoryBarrier2 post_mip_image_barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-        .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .image = image.image,
-        .subresourceRange = post_mip_sub_image
-    };
-
-    VkDependencyInfo post_mip_dep_info = {
-        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-        .imageMemoryBarrierCount = 1,
-        .pImageMemoryBarriers = &post_mip_image_barrier
-    };
-
-    vkCmdPipelineBarrier2(context.immediate_buffer, &post_mip_dep_info);
+    vulkan_cmd_transition_image(context.immediate_buffer, image.image, shader_transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
 
     vulkan_immediate_end(context);
 
@@ -377,65 +341,31 @@ static void vulkan_cmd_create_mipmaps(const VulkanContext& context, const Vulkan
     VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
         
     // Only transition the base mip level
-    VkImageSubresourceRange sub_image = {
-        .aspectMask = aspect,
-        .baseMipLevel = 0,
-        .levelCount = 1,
-        .baseArrayLayer = 0,
-        .layerCount = 1
+    VulkanImageTransitionInfo transition_info = {
+        .src_access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        .src_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .dst_access = VK_ACCESS_2_TRANSFER_READ_BIT,
+        .dst_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .old_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .new_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
     };
 
-    VkImageMemoryBarrier2 image_barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-        .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        .image = image.image,
-        .subresourceRange = sub_image
-    };
-
-    VkDependencyInfo dep_info = {
-        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-        .imageMemoryBarrierCount = 1,
-        .pImageMemoryBarriers = &image_barrier
-    };
-
-    vkCmdPipelineBarrier2(context.immediate_buffer, &dep_info);
+    vulkan_cmd_transition_image(context.immediate_buffer, image.image, transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 
     // Blit down successive mip levels
     for(uint32_t i = 1; i < mip_levels; i++)
     {
         // Transition mip level we are bliting to transfer_dst_optimal
-        VkImageSubresourceRange dst_sub_image = {
-            .aspectMask = aspect,
-            .baseMipLevel = i,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1
+        VulkanImageTransitionInfo miplevel_transition_info = {
+            .src_access = VK_ACCESS_2_NONE,
+            .src_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .dst_access =  VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dst_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .new_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         };
 
-        VkImageMemoryBarrier2 dst_image_barrier = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .srcAccessMask = 0,
-            .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .image = image.image,
-            .subresourceRange = dst_sub_image
-        };
-
-        VkDependencyInfo dst_dep_info = {
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .imageMemoryBarrierCount = 1,
-            .pImageMemoryBarriers = &dst_image_barrier
-        };
-
-        vkCmdPipelineBarrier2(context.immediate_buffer, &dst_dep_info);
+        vulkan_cmd_transition_image(context.immediate_buffer, image.image, miplevel_transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, i, 1, 0, 1 });
 
         // Blit level n - 1 to level n
         VkImageBlit blit = {};
@@ -455,33 +385,16 @@ static void vulkan_cmd_create_mipmaps(const VulkanContext& context, const Vulkan
         vkCmdBlitImage(context.immediate_buffer, image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
 
         // Transition level n to transfer_src_optimal for next loop
-        VkImageSubresourceRange src_sub_image = {
-            .aspectMask = aspect,
-            .baseMipLevel = i,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1
+        VulkanImageTransitionInfo miplevel_src_transition_info = {
+            .src_access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .src_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .dst_access =  VK_ACCESS_2_TRANSFER_READ_BIT,
+            .dst_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .old_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .new_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         };
 
-        VkImageMemoryBarrier2 src_image_barrier = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            .image = image.image,
-            .subresourceRange = src_sub_image
-        };
-
-        VkDependencyInfo src_dep_info = {
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .imageMemoryBarrierCount = 1,
-            .pImageMemoryBarriers = &src_image_barrier
-        };
-
-        vkCmdPipelineBarrier2(context.immediate_buffer, &src_dep_info);
+        vulkan_cmd_transition_image(context.immediate_buffer, image.image, miplevel_src_transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, i, 1, 0, 1 });
     }
 }
 
@@ -528,4 +441,27 @@ void vulkan_immediate_end(const VulkanContext& context)
 
     VK_CHECK(vkQueueSubmit2(context.graphics_queue.queue, 1, &submit_info, context.immediate_fence));
     VK_CHECK(vkWaitForFences(context.device, 1, &context.immediate_fence, true, UINT64_MAX));
+}
+
+void vulkan_cmd_transition_image(VkCommandBuffer cmd, VkImage image, const VulkanImageTransitionInfo& info, VkImageSubresourceRange sub_image)
+{
+    VkImageMemoryBarrier2 image_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = info.src_stage,
+        .srcAccessMask = info.src_access,
+        .dstStageMask = info.dst_stage,
+        .dstAccessMask = info.dst_access,
+        .oldLayout = info.old_layout,
+        .newLayout = info.new_layout,
+        .image = image,
+        .subresourceRange = sub_image
+    };
+
+    VkDependencyInfo dep_info = {
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &image_barrier
+    };
+
+    vkCmdPipelineBarrier2(cmd, &dep_info);
 }
