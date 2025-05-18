@@ -14,6 +14,14 @@
 #include "vma.h"
 #include "VulkanGraphicsPipeline.h"
 
+#include <fastgltf/core.hpp>
+#include <fastgltf/types.hpp>
+#include <fastgltf/tools.hpp>
+
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_glfw.h"
+#include "imgui/imgui_impl_vulkan.h"
+
 bool load_shader_module(const char* path, VkDevice device, VkShaderModule* out_module);
 
 const int WIN_WIDTH = 1920, WIN_HEIGHT = 1080;
@@ -26,6 +34,61 @@ int main()
 
     VulkanContext context = init_vulkan(window, WIN_WIDTH, WIN_HEIGHT);
     assert(validate_vulkan(context));
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+
+    ImGui_ImplGlfw_InitForVulkan(window, true);
+    
+    VkDescriptorPoolSize imgui_pool_sizes[] = {
+        {VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+		{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+    };
+
+    VkDescriptorPoolCreateInfo imgui_pool_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+        .maxSets = 1000,
+        .poolSizeCount = 11,
+        .pPoolSizes = imgui_pool_sizes,
+    };
+
+    VkDescriptorPool imgui_pool;
+    VK_CHECK(vkCreateDescriptorPool(context.device, &imgui_pool_info, nullptr, &imgui_pool));
+
+    ImGui_ImplVulkan_InitInfo imgui_info = {
+        .ApiVersion = VK_API_VERSION_1_3,
+        .Instance = context.instance,
+        .PhysicalDevice = context.physical_device,
+        .Device = context.device,
+        .QueueFamily = context.graphics_queue.family,
+        .Queue = context.graphics_queue.queue,
+        .DescriptorPool = imgui_pool,
+        .MinImageCount = static_cast<uint32_t>(context.swapchain.images.size()),
+        .ImageCount = static_cast<uint32_t>(context.swapchain.images.size()),
+        .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
+        .PipelineCache = VK_NULL_HANDLE,
+        .UseDynamicRendering = true
+    };
+
+    imgui_info.PipelineRenderingCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &context.swapchain.format
+    };
+
+    ImGui_ImplVulkan_Init(&imgui_info);
+    ImGui_ImplVulkan_CreateFontsTexture();
 
     VkDescriptorSetLayoutBinding descriptor_binding = {
         .binding = 0,
@@ -164,6 +227,12 @@ int main()
     {
         glfwPollEvents();
 
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        ImGui::ShowDemoWindow();
+        ImGui::Render();
+
         VulkanFrameData* frame = &context.frames[current_frame];
         VkCommandBuffer cmd = frame->cmd_buffer;
 
@@ -262,6 +331,31 @@ int main()
 
         vkCmdEndRendering(cmd);
 
+        VkRenderingAttachmentInfo imgui_attachment = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = context.swapchain.views[swapchain_index],
+            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue = {
+                .color = {0.0, 0.0, 0.0, 1.0}
+            }
+        };
+
+        VkRenderingInfo imgui_render_info = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea = VkRect2D{ {0, 0}, {context.swapchain.extent.width, context.swapchain.extent.height} },
+            .layerCount = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &imgui_attachment
+        };
+
+        vkCmdBeginRendering(cmd, &imgui_render_info);
+
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+        vkCmdEndRendering(cmd);
+
         // Transition Image to presentable layout
 
         VkImageSubresourceRange sub_image2 = {
@@ -344,6 +438,9 @@ int main()
 
     vkDeviceWaitIdle(context.device);
 
+    ImGui_ImplVulkan_Shutdown();
+    vkDestroyDescriptorPool(context.device, imgui_pool, nullptr);
+
     vulkan_destroy_buffer(context, vertex_buffer);
     vulkan_destroy_image(context, data_image);
 
@@ -388,4 +485,12 @@ bool load_shader_module(const char* path, VkDevice device, VkShaderModule* out_m
     *out_module = shader_module;
 
     return true;
+}
+
+void load_model(const std::string& path)
+{
+    fastgltf::Parser parser;
+    auto gltf_file = fastgltf::MappedGltfFile::FromPath(path);
+    auto asset = parser.loadGltf(gltf_file.get(), path);
+
 }
