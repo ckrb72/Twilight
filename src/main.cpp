@@ -22,6 +22,9 @@
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_vulkan.h"
 
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 bool load_shader_module(const char* path, VkDevice device, VkShaderModule* out_module);
 
 const int WIN_WIDTH = 1920, WIN_HEIGHT = 1080;
@@ -106,10 +109,18 @@ int main()
     VkDescriptorSetLayout descriptor_layout;
     VK_CHECK(vkCreateDescriptorSetLayout(context.device, &descriptor_layout_info, nullptr, &descriptor_layout));
 
+    VkPushConstantRange push_constant = {
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .offset = 0,
+        .size = sizeof(glm::mat4),
+    };
+
     VkPipelineLayoutCreateInfo pipeline_layout_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
-        .pSetLayouts = &descriptor_layout
+        .pSetLayouts = &descriptor_layout,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &push_constant
     };
     VkPipelineLayout pipeline_layout;
     VK_CHECK(vkCreatePipelineLayout(context.device, &pipeline_layout_info, nullptr, &pipeline_layout));
@@ -307,7 +318,12 @@ int main()
 
         VkDeviceSize offsets[] = {0};
         vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer.buffer, offsets);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set, 0, nullptr);
+
+        glm::mat4 push_constant_val = glm::mat4(1.0);
+        push_constant_val = glm::scale(push_constant_val, glm::vec3(2.0, 2.0, 2.0));
+
+        vkCmdPushConstants(cmd, *graphics_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), glm::value_ptr(push_constant_val));
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *graphics_pipeline.layout, 0, 1, &descriptor_set, 0, nullptr);
         vkCmdDraw(cmd, 3, 1, 0, 0);
 
         vkCmdEndRendering(cmd);

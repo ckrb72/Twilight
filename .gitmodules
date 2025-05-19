@@ -10,3 +10,6 @@
 [submodule "fastgltf"]
 	path = fastgltf
 	url = https://github.com/spnda/fastgltf.git
+[submodule "glm"]
+	path = glm
+	url = https://github.com/g-truc/glm.git

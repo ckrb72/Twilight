@@ -12,10 +12,12 @@ set(ASSIMP_INSTALL OFF CACHE BOOL "No ASSIMP Install")
 set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "ASSIMP Warnings as Warnings")
 set(ASSIMP_BUILD_ASSIMP_VIEW OFF CACHE BOOL "No ASSIMP view")
 
+set(GLM_BUILD_TESTS OFF CACHE BOOL "No glm tests")
 
 add_subdirectory(vendor/glfw)
 add_subdirectory(vendor/vk-bootstrap)
 add_subdirectory(fastgltf)
+add_subdirectory(glm)
 add_compile_options(-Wno-nullability-completeness)
 
 file(GLOB_RECURSE SRC_CXX_FILES "${SOURCE_DIR}/*.cpp")
@@ -27,4 +29,4 @@ if(NOT Vulkan_LIBRARIES)
 endif()
 
 add_executable(renderer ${SRC_CXX_FILES})
-target_link_libraries(renderer Vulkan::Vulkan glfw vk-bootstrap::vk-bootstrap fastgltf)
+target_link_libraries(renderer Vulkan::Vulkan glfw vk-bootstrap::vk-bootstrap fastgltf glm::glm-header-only)
