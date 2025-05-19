@@ -1,23 +1,22 @@
-#include "VulkanGraphicsPipeline.h"
+#include "VulkanGraphicsPipelineCompiler.h"
 
-VulkanGraphicsPipeline::VulkanGraphicsPipeline()
+VulkanGraphicsPipelineCompiler::VulkanGraphicsPipelineCompiler()
 {
 
 }
 
-VulkanGraphicsPipeline::~VulkanGraphicsPipeline()
+VulkanGraphicsPipelineCompiler::~VulkanGraphicsPipelineCompiler()
 {
 
 }
 
-// The pipeline does not own the layout...
-// Must be destroyed separately
-void VulkanGraphicsPipeline::set_layout(VkPipelineLayout layout)
+// The pipeline does not take ownership of this layout and will not destroy it
+void VulkanGraphicsPipelineCompiler::set_layout(VkPipelineLayout layout)
 {
     m_layout = layout;
 }
 
-void VulkanGraphicsPipeline::add_binding(uint32_t binding_index, uint32_t stride, VkVertexInputRate rate)
+void VulkanGraphicsPipelineCompiler::add_binding(uint32_t binding_index, uint32_t stride, VkVertexInputRate rate)
 {
     VkVertexInputBindingDescription desc = {
         .binding = binding_index,
@@ -28,7 +27,7 @@ void VulkanGraphicsPipeline::add_binding(uint32_t binding_index, uint32_t stride
     m_bindings.push_back(desc);
 }
 
-void VulkanGraphicsPipeline::add_attribute(uint32_t binding, uint32_t location, uint32_t offset, VkFormat format)
+void VulkanGraphicsPipelineCompiler::add_attribute(uint32_t binding, uint32_t location, uint32_t offset, VkFormat format)
 {
     VkVertexInputAttributeDescription desc = {
         .location = location,
@@ -40,7 +39,7 @@ void VulkanGraphicsPipeline::add_attribute(uint32_t binding, uint32_t location, 
     m_attributes.push_back(desc);
 }
 
-void VulkanGraphicsPipeline::add_shader(VkShaderModule shader, VkShaderStageFlagBits stage)
+void VulkanGraphicsPipelineCompiler::add_shader(VkShaderModule shader, VkShaderStageFlagBits stage)
 {
     VkPipelineShaderStageCreateInfo shader_stage = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -52,7 +51,7 @@ void VulkanGraphicsPipeline::add_shader(VkShaderModule shader, VkShaderStageFlag
     m_shader_stages.push_back(shader_stage);
 }
 
-bool VulkanGraphicsPipeline::compile(const VulkanContext& context)
+VulkanGraphicsPipeline VulkanGraphicsPipelineCompiler::compile(const VulkanContext& context)
 {
     VkPipelineInputAssemblyStateCreateInfo input_assembler = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
@@ -148,16 +147,8 @@ bool VulkanGraphicsPipeline::compile(const VulkanContext& context)
         .layout = m_layout
     };
 
-    VK_CHECK(vkCreateGraphicsPipelines(context.device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_pipeline));
-    return true;
-}
+    VkPipeline pipeline;
+    VK_CHECK(vkCreateGraphicsPipelines(context.device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &pipeline));
 
-void VulkanGraphicsPipeline::cmd_bind(VkCommandBuffer cmd)
-{
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
-}
-
-void VulkanGraphicsPipeline::destroy(const VulkanContext& context)
-{
-    vkDestroyPipeline(context.device, m_pipeline, nullptr);
+    return {pipeline, &m_layout};
 }

@@ -465,3 +465,8 @@ void vulkan_cmd_transition_image(VkCommandBuffer cmd, VkImage image, const Vulka
 
     vkCmdPipelineBarrier2(cmd, &dep_info);
 }
+
+void vulkan_destroy_graphics_pipeline(const VulkanContext& context, VulkanGraphicsPipeline& pipeline)
+{
+    vkDestroyPipeline(context.device, pipeline.pipeline, nullptr);
+}

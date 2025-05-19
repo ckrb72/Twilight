@@ -12,7 +12,7 @@
 #include <fstream>
 
 #include "vma.h"
-#include "VulkanGraphicsPipeline.h"
+#include "VulkanGraphicsPipelineCompiler.h"
 
 #include <fastgltf/core.hpp>
 #include <fastgltf/types.hpp>
@@ -120,17 +120,17 @@ int main()
     load_shader_module("../shaders/default.frag.spv", context.device, &fragment_shader);
 
     VulkanGraphicsPipeline graphics_pipeline;
-    graphics_pipeline.set_layout(pipeline_layout);
-
-    graphics_pipeline.add_binding(0, 5 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX);
-    graphics_pipeline.add_attribute(0, 0, 0, VK_FORMAT_R32G32B32_SFLOAT);
-    graphics_pipeline.add_attribute(0, 1, 3 * sizeof(float), VK_FORMAT_R32G32_SFLOAT);
-
-    graphics_pipeline.add_shader(vertex_shader, VK_SHADER_STAGE_VERTEX_BIT);
-    graphics_pipeline.add_shader(fragment_shader, VK_SHADER_STAGE_FRAGMENT_BIT);
+    {
+        VulkanGraphicsPipelineCompiler graphics_pipeline_compiler;
+        graphics_pipeline_compiler.set_layout(pipeline_layout);
+        graphics_pipeline_compiler.add_binding(0, 5 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX);
+        graphics_pipeline_compiler.add_attribute(0, 0, 0, VK_FORMAT_R32G32B32_SFLOAT);
+        graphics_pipeline_compiler.add_attribute(0, 1, 3 * sizeof(float), VK_FORMAT_R32G32_SFLOAT);
+        graphics_pipeline_compiler.add_shader(vertex_shader, VK_SHADER_STAGE_VERTEX_BIT);
+        graphics_pipeline_compiler.add_shader(fragment_shader, VK_SHADER_STAGE_FRAGMENT_BIT);
+        graphics_pipeline = graphics_pipeline_compiler.compile(context);
+    }
     
-    graphics_pipeline.compile(context);
-
     vkDestroyShaderModule(context.device, vertex_shader, nullptr);
     vkDestroyShaderModule(context.device, fragment_shader, nullptr);
 
@@ -289,8 +289,7 @@ int main()
         };
 
         vkCmdBeginRendering(cmd, &render_info);
-        //vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-        graphics_pipeline.cmd_bind(cmd);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline.pipeline);
 
         VkViewport viewport = {
             .x = 0,
@@ -408,8 +407,7 @@ int main()
 
     vulkan_destroy_buffer(context, vertex_buffer);
     vulkan_destroy_image(context, data_image);
-
-    graphics_pipeline.destroy(context);
+    vulkan_destroy_graphics_pipeline(context, graphics_pipeline);
     vkDestroyPipelineLayout(context.device, pipeline_layout, nullptr);
     vkDestroyDescriptorSetLayout(context.device, descriptor_layout, nullptr);
     vkDestroyDescriptorPool(context.device, descriptor_pool, nullptr);
