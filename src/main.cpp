@@ -207,30 +207,57 @@ int main()
     vkUpdateDescriptorSets(context.device, 1, &write_info, 0, nullptr);
 
 
-    VulkanBuffer staging_buffer = vulkan_create_buffer(context, 3 * 5 * sizeof(float), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    VulkanBuffer staging_buffer = vulkan_create_buffer(context, 4 * 5 * sizeof(float), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
     float vertices[] =
     {
-        -0.5, 0.5, 0.0,     0.0, 0.0,
-        0.5, 0.5, 0.0,      1.0, 0.0,
-        0.0, -0.5, 0.0,     0.5, 1.0
+        -0.5, 0.5, -2.0,     0.0, 0.0,
+        0.5, 0.5, -2.0,      1.0, 0.0,
+        0.5, -0.5, -2.0,     0.5, 1.0,
+
+        //0.5, -0.5, -2.0,     0.5, 1.0,
+        -0.5, -0.5, -2.0,    0.0, 1.0,
+        //-0.5, 0.5, -2.0,     0.0, 0.0
     };
 
     void* vert_ptr = staging_buffer.info.pMappedData;
     memcpy(vert_ptr, vertices, sizeof(vertices));
 
-    VulkanBuffer vertex_buffer = vulkan_create_buffer(context, 3 * 5 * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    unsigned int indices[] = 
+    {
+        0, 1, 2,
+        2, 3, 0
+    };
+
+    VulkanBuffer index_staging_buffer = vulkan_create_buffer(context, 6 * sizeof(unsigned int), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    void* index_ptr = index_staging_buffer.info.pMappedData;
+    memcpy(index_ptr, indices, sizeof(indices));
+
+    VulkanBuffer index_buffer = vulkan_create_buffer(context, 6 * sizeof(unsigned int), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+
+    VulkanBuffer vertex_buffer = vulkan_create_buffer(context, 4 * 5 * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
     vulkan_immediate_begin(context);
-    VkBufferCopy copy_info = {
-        .srcOffset = 0,
-        .dstOffset = 0,
-        .size = 3 * 5 * sizeof(float),
-    };
-    vkCmdCopyBuffer(context.immediate_buffer, staging_buffer.buffer, vertex_buffer.buffer, 1, &copy_info);
+    {
+        VkBufferCopy copy_info = {
+            .srcOffset = 0,
+            .dstOffset = 0,
+            .size = 4 * 5 * sizeof(float),
+        };
+        vkCmdCopyBuffer(context.immediate_buffer, staging_buffer.buffer, vertex_buffer.buffer, 1, &copy_info);
+    }
+    {
+        VkBufferCopy copy_info = {
+            .srcOffset = 0,
+            .dstOffset = 0,
+            .size = 6 * sizeof(unsigned int)
+        };
+        vkCmdCopyBuffer(context.immediate_buffer, index_staging_buffer.buffer, index_buffer.buffer, 1, &copy_info);
+    }
     vulkan_immediate_end(context);
 
     vulkan_destroy_buffer(context, staging_buffer);
+    vulkan_destroy_buffer(context, index_staging_buffer);
 
     uint32_t current_frame = 0;
 
@@ -318,13 +345,16 @@ int main()
 
         VkDeviceSize offsets[] = {0};
         vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer.buffer, offsets);
+        vkCmdBindIndexBuffer(cmd, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-        glm::mat4 push_constant_val = glm::mat4(1.0);
-        push_constant_val = glm::scale(push_constant_val, glm::vec3(2.0, 2.0, 2.0));
+        glm::mat4 push_constant_val = glm::perspective(glm::radians(45.0f), (float)WIN_WIDTH / (float)WIN_HEIGHT, 0.1f, 10.0f);
 
         vkCmdPushConstants(cmd, *graphics_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), glm::value_ptr(push_constant_val));
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *graphics_pipeline.layout, 0, 1, &descriptor_set, 0, nullptr);
-        vkCmdDraw(cmd, 3, 1, 0, 0);
+        //vkCmdDraw(cmd, 3, 1, 0, 0);
+        vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
 
         vkCmdEndRendering(cmd);
 
@@ -346,12 +376,6 @@ int main()
             .colorAttachmentCount = 1,
             .pColorAttachments = &imgui_attachment
         };
-
-        vkCmdBeginRendering(cmd, &imgui_render_info);
-
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
-
-        vkCmdEndRendering(cmd);
 
         // Transition Image to presentable layout
 
@@ -422,6 +446,7 @@ int main()
     vkDestroyDescriptorPool(context.device, imgui_pool, nullptr);
 
     vulkan_destroy_buffer(context, vertex_buffer);
+    vulkan_destroy_buffer(context, index_buffer);
     vulkan_destroy_image(context, data_image);
     vulkan_destroy_graphics_pipeline(context, graphics_pipeline);
     vkDestroyPipelineLayout(context.device, pipeline_layout, nullptr);
