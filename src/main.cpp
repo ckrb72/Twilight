@@ -206,43 +206,78 @@ int main()
 
     vkUpdateDescriptorSets(context.device, 1, &write_info, 0, nullptr);
 
-
-    VulkanBuffer staging_buffer = vulkan_create_buffer(context, 4 * 5 * sizeof(float), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-
     float vertices[] =
     {
         -0.5, 0.5, -2.0,     0.0, 0.0,
         0.5, 0.5, -2.0,      1.0, 0.0,
-        0.5, -0.5, -2.0,     0.5, 1.0,
-
-        //0.5, -0.5, -2.0,     0.5, 1.0,
+        0.5, -0.5, -2.0,     1.0, 1.0,
         -0.5, -0.5, -2.0,    0.0, 1.0,
-        //-0.5, 0.5, -2.0,     0.0, 0.0
-    };
 
+        -0.5, 0.5, -4.0,     0.0, 0.0,
+        0.5, 0.5, -4.0,      1.0, 0.0,
+        0.5, -0.5, -4.0,     1.0, 1.0,
+        -0.5, -0.5, -4.0,    0.0, 1.0,
+
+        0.5, 0.5, -2.0,      0.0, 0.0,
+        0.5, 0.5, -4.0,      1.0, 0.0,
+        0.5, -0.5, -4.0,     1.0, 1.0,
+        0.5, -0.5, -2.0,     0.0, 1.0,
+
+        -0.5, 0.5, -2.0,      0.0, 0.0,
+        -0.5, 0.5, -4.0,      1.0, 0.0,
+        -0.5, -0.5, -4.0,     1.0, 1.0,
+        -0.5, -0.5, -2.0,     0.0, 1.0,
+
+        -0.5, -0.5, -2.0,     0.0, 0.0,
+        0.5, -0.5, -2.0,      1.0, 0.0,
+        0.5, -0.5, -4.0,      1.0, 1.0,
+        -0.5, -0.5, -5.0,     0.0, 1.0,
+
+        -0.5, 0.5, -2.0,     0.0, 0.0,
+        0.5, 0.5, -2.0,      1.0, 0.0,
+        0.5, 0.5, -4.0,      1.0, 1.0,
+        -0.5, 0.5, -5.0,     0.0, 1.0,
+    };
+    
+    VulkanBuffer staging_buffer = vulkan_create_buffer(context, sizeof(vertices), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
     void* vert_ptr = staging_buffer.info.pMappedData;
     memcpy(vert_ptr, vertices, sizeof(vertices));
 
     unsigned int indices[] = 
     {
         0, 1, 2,
-        2, 3, 0
+        2, 3, 0,
+
+        4, 5, 6,
+        6, 7, 4,
+
+        8, 9, 10,
+        10, 11, 8,
+
+        12, 13, 14,
+        14, 15, 12,
+
+        16, 17, 18,
+        18, 19, 16,
+
+        20, 21, 22,
+        22, 23, 20
     };
 
-    VulkanBuffer index_staging_buffer = vulkan_create_buffer(context, 6 * sizeof(unsigned int), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    VulkanBuffer index_staging_buffer = vulkan_create_buffer(context, sizeof(indices), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
     void* index_ptr = index_staging_buffer.info.pMappedData;
     memcpy(index_ptr, indices, sizeof(indices));
 
-    VulkanBuffer index_buffer = vulkan_create_buffer(context, 6 * sizeof(unsigned int), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    VulkanBuffer index_buffer = vulkan_create_buffer(context, sizeof(indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
-    VulkanBuffer vertex_buffer = vulkan_create_buffer(context, 4 * 5 * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+    VulkanBuffer vertex_buffer = vulkan_create_buffer(context, sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
     vulkan_immediate_begin(context);
     {
         VkBufferCopy copy_info = {
             .srcOffset = 0,
             .dstOffset = 0,
-            .size = 4 * 5 * sizeof(float),
+            .size = sizeof(vertices),
         };
         vkCmdCopyBuffer(context.immediate_buffer, staging_buffer.buffer, vertex_buffer.buffer, 1, &copy_info);
     }
@@ -250,7 +285,7 @@ int main()
         VkBufferCopy copy_info = {
             .srcOffset = 0,
             .dstOffset = 0,
-            .size = 6 * sizeof(unsigned int)
+            .size = sizeof(indices)
         };
         vkCmdCopyBuffer(context.immediate_buffer, index_staging_buffer.buffer, index_buffer.buffer, 1, &copy_info);
     }
@@ -258,6 +293,8 @@ int main()
 
     vulkan_destroy_buffer(context, staging_buffer);
     vulkan_destroy_buffer(context, index_staging_buffer);
+
+    VulkanImage depth_image = vulkan_create_image(context, VkExtent3D{context.swapchain.extent.width, context.swapchain.extent.height, 1}, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, false);
 
     uint32_t current_frame = 0;
 
@@ -307,6 +344,17 @@ int main()
 
         vulkan_cmd_transition_image(cmd, swapchain_image, initial_transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
 
+        VulkanImageTransitionInfo depth_transition_info = {
+            .src_access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .src_stage = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+            .dst_access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .dst_stage = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
+            .old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .new_layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+        };
+
+        vulkan_cmd_transition_image(cmd, depth_image.image, depth_transition_info, {VK_IMAGE_ASPECT_DEPTH_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+
         VkRenderingAttachmentInfo color_attachment_info = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
             .imageView = context.swapchain.views[swapchain_index],
@@ -318,12 +366,24 @@ int main()
             }
         };
 
+        VkRenderingAttachmentInfo depth_attachment_info = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = depth_image.view,
+            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue = {
+                .depthStencil = {.depth = 1.0f}
+            }
+        };
+
         VkRenderingInfo render_info = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
             .renderArea = VkRect2D{ {0, 0}, {context.swapchain.extent.width, context.swapchain.extent.height} },
             .layerCount = 1,
             .colorAttachmentCount = 1,
-            .pColorAttachments = &color_attachment_info
+            .pColorAttachments = &color_attachment_info,
+            .pDepthAttachment = &depth_attachment_info
         };
 
         vkCmdBeginRendering(cmd, &render_info);
@@ -351,12 +411,10 @@ int main()
 
         vkCmdPushConstants(cmd, *graphics_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), glm::value_ptr(push_constant_val));
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *graphics_pipeline.layout, 0, 1, &descriptor_set, 0, nullptr);
-        //vkCmdDraw(cmd, 3, 1, 0, 0);
         vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
 
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
-
         vkCmdEndRendering(cmd);
+
 
         VkRenderingAttachmentInfo imgui_attachment = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -375,8 +433,12 @@ int main()
             .layerCount = 1,
             .colorAttachmentCount = 1,
             .pColorAttachments = &imgui_attachment
-        };
+        }; 
 
+        vkCmdBeginRendering(cmd, &imgui_render_info);
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+        vkCmdEndRendering(cmd);
+        
         // Transition Image to presentable layout
 
         VulkanImageTransitionInfo transition_info = {
@@ -448,6 +510,7 @@ int main()
     vulkan_destroy_buffer(context, vertex_buffer);
     vulkan_destroy_buffer(context, index_buffer);
     vulkan_destroy_image(context, data_image);
+    vulkan_destroy_image(context, depth_image);
     vulkan_destroy_graphics_pipeline(context, graphics_pipeline);
     vkDestroyPipelineLayout(context.device, pipeline_layout, nullptr);
     vkDestroyDescriptorSetLayout(context.device, descriptor_layout, nullptr);
