@@ -29,6 +29,12 @@ bool load_shader_module(const char* path, VkDevice device, VkShaderModule* out_m
 
 const int WIN_WIDTH = 1920, WIN_HEIGHT = 1080;
 
+struct PushConstants
+{
+    glm::mat4 projection;
+    glm::mat4 model;
+};
+
 int main()
 {
     glfwInit();
@@ -112,7 +118,7 @@ int main()
     VkPushConstantRange push_constant = {
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
         .offset = 0,
-        .size = sizeof(glm::mat4),
+        .size = sizeof(PushConstants),
     };
 
     VkPipelineLayoutCreateInfo pipeline_layout_info = {
@@ -213,30 +219,7 @@ int main()
         0.5, -0.5, -2.0,     1.0, 1.0,
         -0.5, -0.5, -2.0,    0.0, 1.0,
 
-        -0.5, 0.5, -4.0,     0.0, 0.0,
-        0.5, 0.5, -4.0,      1.0, 0.0,
-        0.5, -0.5, -4.0,     1.0, 1.0,
-        -0.5, -0.5, -4.0,    0.0, 1.0,
 
-        0.5, 0.5, -2.0,      0.0, 0.0,
-        0.5, 0.5, -4.0,      1.0, 0.0,
-        0.5, -0.5, -4.0,     1.0, 1.0,
-        0.5, -0.5, -2.0,     0.0, 1.0,
-
-        -0.5, 0.5, -2.0,      0.0, 0.0,
-        -0.5, 0.5, -4.0,      1.0, 0.0,
-        -0.5, -0.5, -4.0,     1.0, 1.0,
-        -0.5, -0.5, -2.0,     0.0, 1.0,
-
-        -0.5, -0.5, -2.0,     0.0, 0.0,
-        0.5, -0.5, -2.0,      1.0, 0.0,
-        0.5, -0.5, -4.0,      1.0, 1.0,
-        -0.5, -0.5, -5.0,     0.0, 1.0,
-
-        -0.5, 0.5, -2.0,     0.0, 0.0,
-        0.5, 0.5, -2.0,      1.0, 0.0,
-        0.5, 0.5, -4.0,      1.0, 1.0,
-        -0.5, 0.5, -5.0,     0.0, 1.0,
     };
     
     VulkanBuffer staging_buffer = vulkan_create_buffer(context, sizeof(vertices), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
@@ -247,21 +230,6 @@ int main()
     {
         0, 1, 2,
         2, 3, 0,
-
-        4, 5, 6,
-        6, 7, 4,
-
-        8, 9, 10,
-        10, 11, 8,
-
-        12, 13, 14,
-        14, 15, 12,
-
-        16, 17, 18,
-        18, 19, 16,
-
-        20, 21, 22,
-        22, 23, 20
     };
 
     VulkanBuffer index_staging_buffer = vulkan_create_buffer(context, sizeof(indices), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
@@ -407,9 +375,13 @@ int main()
         vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer.buffer, offsets);
         vkCmdBindIndexBuffer(cmd, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-        glm::mat4 push_constant_val = glm::perspective(glm::radians(45.0f), (float)WIN_WIDTH / (float)WIN_HEIGHT, 0.1f, 10.0f);
+        PushConstants push_constants = 
+        {
+            .projection = glm::perspective(glm::radians(45.0f), (float)WIN_WIDTH / (float)WIN_HEIGHT, 0.1f, 100.0f),
+            .model = glm::mat4(1.0f)
+        };
 
-        vkCmdPushConstants(cmd, *graphics_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), glm::value_ptr(push_constant_val));
+        vkCmdPushConstants(cmd, *graphics_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push_constants);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *graphics_pipeline.layout, 0, 1, &descriptor_set, 0, nullptr);
         vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
 
