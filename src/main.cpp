@@ -136,9 +136,10 @@ int main()
     {
         VulkanGraphicsPipelineCompiler graphics_pipeline_compiler;
         graphics_pipeline_compiler.set_layout(pipeline_layout);
-        graphics_pipeline_compiler.add_binding(0, 5 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX);
+        graphics_pipeline_compiler.add_binding(0, 8 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX);
         graphics_pipeline_compiler.add_attribute(0, 0, 0, VK_FORMAT_R32G32B32_SFLOAT);
         graphics_pipeline_compiler.add_attribute(0, 1, 3 * sizeof(float), VK_FORMAT_R32G32_SFLOAT);
+        graphics_pipeline_compiler.add_attribute(0, 2, 5 * sizeof(float), VK_FORMAT_R32G32B32_SFLOAT);
         graphics_pipeline_compiler.add_shader(vertex_shader, VK_SHADER_STAGE_VERTEX_BIT);
         graphics_pipeline_compiler.add_shader(fragment_shader, VK_SHADER_STAGE_FRAGMENT_BIT);
         graphics_pipeline = graphics_pipeline_compiler.compile(context);
@@ -210,35 +211,35 @@ int main()
 
     float vertices[] =
     {
-        -0.5, 0.5, 0.5,     0.0, 0.0,
-        0.5, 0.5, 0.5,      1.0, 0.0,
-        0.5, -0.5, 0.5,     1.0, 1.0,
-        -0.5, -0.5, 0.5,    0.0, 1.0,
+        -0.5, 0.5, 0.5,     0.0, 0.0,   0.0, 0.0, 1.0,
+        0.5, 0.5, 0.5,      1.0, 0.0,   0.0, 0.0, 1.0,
+        0.5, -0.5, 0.5,     1.0, 1.0,   0.0, 0.0, 1.0,
+        -0.5, -0.5, 0.5,    0.0, 1.0,   0.0, 0.0, 1.0,
 
-        0.5, 0.5, -0.5,     0.0, 0.0,
-        -0.5, 0.5, -0.5,    1.0, 0.0,
-        -0.5, -0.5, -0.5,   1.0, 1.0,
-        0.5, -0.5, -0.5,    0.0, 1.0,
+        0.5, 0.5, -0.5,     0.0, 0.0,   0.0, 0.0, -1.0,
+        -0.5, 0.5, -0.5,    1.0, 0.0,   0.0, 0.0, -1.0,
+        -0.5, -0.5, -0.5,   1.0, 1.0,   0.0, 0.0, -1.0,
+        0.5, -0.5, -0.5,    0.0, 1.0,   0.0, 0.0, -1.0,
 
-        -0.5, 0.5, -0.5,    0.0, 0.0,
-        -0.5, 0.5, 0.5,     1.0, 0.0,
-        -0.5, -0.5, 0.5,    1.0, 1.0,
-        -0.5, -0.5, -0.5,   0.0, 1.0,
+        -0.5, 0.5, -0.5,    0.0, 0.0,   -1.0, 0.0, 0.0,
+        -0.5, 0.5, 0.5,     1.0, 0.0,   -1.0, 0.0, 0.0,
+        -0.5, -0.5, 0.5,    1.0, 1.0,   -1.0, 0.0, 0.0,
+        -0.5, -0.5, -0.5,   0.0, 1.0,   -1.0, 0.0, 0.0,
 
-        0.5, 0.5, 0.5,      0.0, 0.0,
-        0.5, 0.5, -0.5,     1.0, 0.0,
-        0.5, -0.5, -0.5,    1.0, 1.0,
-        0.5, -0.5, 0.5,     0.0, 1.0,
+        0.5, 0.5, 0.5,      0.0, 0.0,   1.0, 0.0, 0.0,
+        0.5, 0.5, -0.5,     1.0, 0.0,   1.0, 0.0, 0.0,
+        0.5, -0.5, -0.5,    1.0, 1.0,   1.0, 0.0, 0.0,
+        0.5, -0.5, 0.5,     0.0, 1.0,   1.0, 0.0, 0.0,
 
-        -0.5, -0.5, 0.5,    0.0, 0.0,
-        0.5, -0.5, 0.5,     1.0, 0.0,
-        0.5, -0.5, -0.5,    1.0, 1.0,
-        -0.5, -0.5, -0.5,   0.0, 1.0,
+        -0.5, -0.5, 0.5,    0.0, 0.0,   0.0, 1.0, 0.0,
+        0.5, -0.5, 0.5,     1.0, 0.0,   0.0, 1.0, 0.0,
+        0.5, -0.5, -0.5,    1.0, 1.0,   0.0, 1.0, 0.0,
+        -0.5, -0.5, -0.5,   0.0, 1.0,   0.0, 1.0, 0.0,
 
-        -0.5, 0.5, -0.5,    0.0, 0.0,
-        0.5, 0.5, -0.5,     1.0, 0.0,
-        0.5, 0.5, 0.5,      1.0, 1.0,
-        -0.5, 0.5, 0.5,      0.0, 1.0
+        -0.5, 0.5, -0.5,    0.0, 0.0,   0.0, -1.0, 0.0,
+        0.5, 0.5, -0.5,     1.0, 0.0,   0.0, -1.0, 0.0,
+        0.5, 0.5, 0.5,      1.0, 1.0,   0.0, -1.0, 0.0,
+        -0.5, 0.5, 0.5,     0.0, 1.0,   0.0, -1.0, 0.0
     };
     
     VulkanBuffer staging_buffer = vulkan_create_buffer(context, sizeof(vertices), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
