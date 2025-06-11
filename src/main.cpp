@@ -210,10 +210,35 @@ int main()
 
     float vertices[] =
     {
-        -0.5, 0.5, -0.5,     0.0, 0.0,
-        0.5, 0.5, -0.5,      1.0, 0.0,
-        0.5, -0.5, -0.5,     1.0, 1.0,
-        -0.5, -0.5, -0.5,    0.0, 1.0,
+        -0.5, 0.5, 0.5,     0.0, 0.0,
+        0.5, 0.5, 0.5,      1.0, 0.0,
+        0.5, -0.5, 0.5,     1.0, 1.0,
+        -0.5, -0.5, 0.5,    0.0, 1.0,
+
+        0.5, 0.5, -0.5,     0.0, 0.0,
+        -0.5, 0.5, -0.5,    1.0, 0.0,
+        -0.5, -0.5, -0.5,   1.0, 1.0,
+        0.5, -0.5, -0.5,    0.0, 1.0,
+
+        -0.5, 0.5, -0.5,    0.0, 0.0,
+        -0.5, 0.5, 0.5,     1.0, 0.0,
+        -0.5, -0.5, 0.5,    1.0, 1.0,
+        -0.5, -0.5, -0.5,   0.0, 1.0,
+
+        0.5, 0.5, 0.5,      0.0, 0.0,
+        0.5, 0.5, -0.5,     1.0, 0.0,
+        0.5, -0.5, -0.5,    1.0, 1.0,
+        0.5, -0.5, 0.5,     0.0, 1.0,
+
+        -0.5, -0.5, 0.5,    0.0, 0.0,
+        0.5, -0.5, 0.5,     1.0, 0.0,
+        0.5, -0.5, -0.5,    1.0, 1.0,
+        -0.5, -0.5, -0.5,   0.0, 1.0,
+
+        -0.5, 0.5, -0.5,    0.0, 0.0,
+        0.5, 0.5, -0.5,     1.0, 0.0,
+        0.5, 0.5, 0.5,      1.0, 1.0,
+        -0.5, 0.5, 0.5,      0.0, 1.0
     };
     
     VulkanBuffer staging_buffer = vulkan_create_buffer(context, sizeof(vertices), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
@@ -224,6 +249,21 @@ int main()
     {
         0, 1, 2,
         2, 3, 0,
+
+        4, 5, 6,
+        6, 7, 4,
+
+        8, 9, 10,
+        10, 11, 8,
+
+        12, 13, 14,
+        14, 15, 12,
+
+        16, 17, 18,
+        18, 19, 16,
+
+        20, 21, 22,
+        22, 23, 20
     };
 
     VulkanBuffer index_staging_buffer = vulkan_create_buffer(context, sizeof(indices), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
@@ -259,6 +299,8 @@ int main()
     VulkanImage depth_image = vulkan_create_image(context, VkExtent3D{context.swapchain.extent.width, context.swapchain.extent.height, 1}, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, false);
 
     uint32_t current_frame = 0;
+
+    float angle = 0.0f;
 
     while(!glfwWindowShouldClose(window))
     {
@@ -369,15 +411,18 @@ int main()
         vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer.buffer, offsets);
         vkCmdBindIndexBuffer(cmd, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-        glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.2f, -1.0f));
+        glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -2.0f));
+        model_mat = glm::rotate(model_mat, glm::radians(angle), glm::vec3(1.0f, 1.0f, 1.0f));
         model_mat = glm::scale(model_mat, glm::vec3(0.25f));
+
+        angle += 0.05f;
 
         glm::mat4 persp = glm::perspective(glm::radians(45.0f), (float)WIN_WIDTH / (float)WIN_HEIGHT, 0.1f, 100.0f);
         glm::mat4 push_mat = persp * model_mat;
 
         vkCmdPushConstants(cmd, *graphics_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), glm::value_ptr(push_mat));
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *graphics_pipeline.layout, 0, 1, &descriptor_set, 0, nullptr);
-        vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+        vkCmdDrawIndexed(cmd, 36, 1, 0, 0, 0);
 
         vkCmdEndRendering(cmd);
 
