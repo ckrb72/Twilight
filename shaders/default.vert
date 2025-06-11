@@ -17,6 +17,6 @@ layout(push_constant) uniform pc
 void main() {
     gl_Position = projection * vec4(v_pos, 1.0);
     f_tex = v_tex;
-    f_pos = v_pos;
-    f_norm = v_norm;
+    f_pos = v_pos;      // Multiply times model matrix
+    f_norm = v_norm;    // Multiply times inverse_transpose model matrix
 }

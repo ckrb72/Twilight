@@ -8,7 +8,16 @@ layout(location = 0) out vec4 out_color;
 
 layout(set = 0, binding = 0) uniform sampler2D tex;
 
+vec3 light_pos = vec3(1.0, 1.0, 1.0);
+vec3 light_color = vec3(1.0, 1.0, 1.0);
+
 void main() {
-    out_color = vec4(f_norm, 1.0);
+
+    vec3 ambient = 0.1 * light_color;
+
+    vec3 light_dir = normalize(light_pos - f_pos);
+    vec3 diffuse = light_color * max(dot(f_norm, light_dir), 0.0);
+
+    out_color = vec4(texture(tex, f_tex).rgb * (ambient + diffuse), 1.0);
     //out_color = texture(tex, f_tex);
 }
