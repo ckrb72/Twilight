@@ -1,6 +1,7 @@
 #include "vulkan_backend.h"
 #include <VkBootstrap.h>
 #include <GLFW/glfw3.h>
+#include <fstream>
 #include "vma.h"
 
 static void create_swapchain(VulkanContext& context, uint32_t width, uint32_t height);
@@ -205,17 +206,17 @@ VulkanBuffer vulkan_create_buffer(const VulkanContext& context, uint64_t size, V
     };
 
     VulkanBuffer buffer = {};
-    VK_CHECK(vmaCreateBuffer(context.allocator, &buf_info, &alloc_info, &buffer.buffer, &buffer.allocation, &buffer.info));
+    VK_CHECK(vmaCreateBuffer(context.allocator, &buf_info, &alloc_info, &buffer.handle, &buffer.allocation, &buffer.info));
     
     return buffer;
 }
 
 void vulkan_destroy_buffer(const VulkanContext& context, VulkanBuffer& buffer)
 {
-    vmaDestroyBuffer(context.allocator, buffer.buffer, buffer.allocation);
+    vmaDestroyBuffer(context.allocator, buffer.handle, buffer.allocation);
 
     buffer.allocation = nullptr;
-    buffer.buffer = VK_NULL_HANDLE;
+    buffer.handle = VK_NULL_HANDLE;
     buffer.info = {};
 }
 
@@ -244,13 +245,13 @@ VulkanImage vulkan_create_image(const VulkanContext& context, VkExtent3D size, V
         .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
     };
 
-    VulkanImage image = { .format = format, .width = size.width, .height = size.height, .depth = size.height };
+    VulkanImage image = { .format = format, .width = size.width, .height = size.height, .depth = size.depth };
 
-    VK_CHECK(vmaCreateImage(context.allocator, &image_info, &alloc_info, &image.image, &image.allocation, &image.info));
+    VK_CHECK(vmaCreateImage(context.allocator, &image_info, &alloc_info, &image.handle, &image.allocation, &image.info));
 
     VkImageViewCreateInfo view_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image = image.image,
+        .image = image.handle,
         .viewType = VK_IMAGE_VIEW_TYPE_2D,
         .format = format
     };
@@ -281,34 +282,7 @@ VulkanImage vulkan_create_image(const VulkanContext& context, void* data, VkExte
 
     vulkan_immediate_begin(context);
 
-    VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-
-    // Transition base mip level to be ready for transfer
-
-    VulkanImageTransitionInfo transition_info = {
-        .src_access = VK_ACCESS_2_NONE,
-        .src_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-        .dst_access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        .dst_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-        .old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .new_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-    };
-
-    vulkan_cmd_transition_image(context.immediate_buffer, image.image, transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
-
-
-    VkBufferImageCopy copy_info = {
-        .imageExtent = size,
-    };
-
-    copy_info.imageSubresource = {
-        .aspectMask = aspect,
-        .mipLevel = 0,
-        .baseArrayLayer = 0,
-        .layerCount = 1
-    };
-
-    vkCmdCopyBufferToImage(context.immediate_buffer, data_buffer.buffer, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_info);
+    vulkan_cmd_copy_buffer_to_image(context.immediate_buffer, data_buffer, image);
 
     if(mipmapped)
     {
@@ -324,11 +298,11 @@ VulkanImage vulkan_create_image(const VulkanContext& context, void* data, VkExte
         .new_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
-    vulkan_cmd_transition_image(context.immediate_buffer, image.image, shader_transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
+    vulkan_cmd_transition_image(context.immediate_buffer, image.handle, shader_transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
 
     vulkan_immediate_end(context);
 
-    vmaDestroyBuffer(context.allocator, data_buffer.buffer, data_buffer.allocation);
+    vmaDestroyBuffer(context.allocator, data_buffer.handle, data_buffer.allocation);
 
     return image;
 }
@@ -350,7 +324,7 @@ static void vulkan_cmd_create_mipmaps(const VulkanContext& context, const Vulkan
         .new_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
     };
 
-    vulkan_cmd_transition_image(context.immediate_buffer, image.image, transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
+    vulkan_cmd_transition_image(context.immediate_buffer, image.handle, transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 
     // Blit down successive mip levels
     for(uint32_t i = 1; i < mip_levels; i++)
@@ -365,7 +339,7 @@ static void vulkan_cmd_create_mipmaps(const VulkanContext& context, const Vulkan
             .new_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         };
 
-        vulkan_cmd_transition_image(context.immediate_buffer, image.image, miplevel_transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, i, 1, 0, 1 });
+        vulkan_cmd_transition_image(context.immediate_buffer, image.handle, miplevel_transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, i, 1, 0, 1 });
 
         // Blit level n - 1 to level n
         VkImageBlit blit = {};
@@ -382,7 +356,7 @@ static void vulkan_cmd_create_mipmaps(const VulkanContext& context, const Vulkan
             .layerCount = 1
         };
 
-        vkCmdBlitImage(context.immediate_buffer, image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+        vkCmdBlitImage(context.immediate_buffer, image.handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
 
         // Transition level n to transfer_src_optimal for next loop
         VulkanImageTransitionInfo miplevel_src_transition_info = {
@@ -394,16 +368,16 @@ static void vulkan_cmd_create_mipmaps(const VulkanContext& context, const Vulkan
             .new_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         };
 
-        vulkan_cmd_transition_image(context.immediate_buffer, image.image, miplevel_src_transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, i, 1, 0, 1 });
+        vulkan_cmd_transition_image(context.immediate_buffer, image.handle, miplevel_src_transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, i, 1, 0, 1 });
     }
 }
 
 void vulkan_destroy_image(const VulkanContext& context, VulkanImage& image)
 {
     vkDestroyImageView(context.device, image.view, nullptr);
-    vmaDestroyImage(context.allocator, image.image, image.allocation);
+    vmaDestroyImage(context.allocator, image.handle, image.allocation);
 
-    image.image = VK_NULL_HANDLE;
+    image.handle = VK_NULL_HANDLE;
     image.view = VK_NULL_HANDLE;
     image.allocation = nullptr;
     image.info = {};
@@ -470,3 +444,140 @@ void vulkan_destroy_graphics_pipeline(const VulkanContext& context, VulkanGraphi
 {
     vkDestroyPipeline(context.device, pipeline.pipeline, nullptr);
 }
+
+void vulkan_cmd_copy_buffer_to_buffer(VkCommandBuffer cmd, uint64_t size, const VulkanBuffer& src, const VulkanBuffer dst)
+{
+    VkBufferCopy copy_info = {
+        .srcOffset = 0,
+        .dstOffset = 0,
+        .size = size,
+    };
+    vkCmdCopyBuffer(cmd, src.handle, dst.handle, 1, &copy_info);
+}
+
+VulkanBuffer vulkan_create_buffer(const VulkanContext& context, uint64_t size, void* data, VkBufferUsageFlags usage)
+{
+    VulkanBuffer staging_buffer = vulkan_create_buffer(context, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    VulkanBuffer buffer = vulkan_create_buffer(context, size, usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+
+    void* staging_ptr = staging_buffer.info.pMappedData;
+    memcpy(staging_ptr, data, size);
+
+    vulkan_immediate_begin(context);
+    vulkan_cmd_copy_buffer_to_buffer(context.immediate_buffer, size, staging_buffer, buffer);
+    vulkan_immediate_end(context);
+
+    vulkan_destroy_buffer(context, staging_buffer);
+
+    return buffer;
+}
+
+void vulkan_cmd_copy_buffer_to_image(VkCommandBuffer cmd, const VulkanBuffer& src, const VulkanImage& dst)
+{
+    VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+    
+    VulkanImageTransitionInfo transition_info = {
+        .src_access = VK_ACCESS_2_NONE,
+        .src_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .dst_access = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        .dst_stage = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .new_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+    };
+
+    vulkan_cmd_transition_image(cmd, dst.handle, transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
+
+
+    VkBufferImageCopy copy_info = {
+        .imageExtent = VkExtent3D{dst.width, dst.height, dst.depth},
+    };
+
+    copy_info.imageSubresource = {
+        .aspectMask = aspect,
+        .mipLevel = 0,
+        .baseArrayLayer = 0,
+        .layerCount = 1
+    };
+
+    vkCmdCopyBufferToImage(cmd, src.handle, dst.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_info);
+}
+
+bool vulkan_load_shader_module(const char* path, VkDevice device, VkShaderModule* out_module)
+{
+    std::ifstream file(path, std::ios::ate | std::ios::binary);
+    if(!file.is_open())
+    {
+        std::cerr << "Failed to open file: " << path << std::endl;
+        return false;
+    }
+
+    size_t file_size = (size_t)file.tellg();
+    std::vector<uint32_t> buffer(file_size / sizeof(uint32_t));
+    file.seekg(0);
+    file.read((char*)buffer.data(), file_size);
+    file.close();
+
+    VkShaderModuleCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = buffer.size() * sizeof(uint32_t),
+        .pCode = buffer.data()
+    };
+
+    VkShaderModule shader_module;
+    VK_CHECK(vkCreateShaderModule(device, &create_info, nullptr, &shader_module))
+
+    *out_module = shader_module;
+
+    return true;
+}
+
+/*
+void vulkan_frame_end(VulkanContext& context)
+{
+    // Submit the commands to the command buffer
+    VkCommandBufferSubmitInfo cmd_submit_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+        .commandBuffer = cmd,
+        .deviceMask = 0
+    };
+
+    VkSemaphoreSubmitInfo wait_info = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .semaphore = frame->swapchain_semaphore,
+        .value = 1,
+        .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR,
+        .deviceIndex = 0
+    };
+
+    VkSemaphoreSubmitInfo signal_info = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .semaphore = frame->render_semaphore,
+        .value = 1,
+        .stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR,
+        .deviceIndex = 0
+    };
+
+    VkSubmitInfo2 submit_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+        .waitSemaphoreInfoCount = 1,
+        .pWaitSemaphoreInfos = &wait_info,
+        .commandBufferInfoCount = 1,
+        .pCommandBufferInfos = &cmd_submit_info,
+        .signalSemaphoreInfoCount = 1,
+        .pSignalSemaphoreInfos = &signal_info
+    };
+
+    // Submits commands to queue and sets fence to signal when done
+    VK_CHECK(vkQueueSubmit2(context.graphics_queue.queue, 1, &submit_info, frame->render_fence));
+
+    VkPresentInfoKHR present_info = {
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &frame->render_semaphore,
+        .swapchainCount = 1,
+        .pSwapchains = &context.swapchain.swapchain,
+        .pImageIndices = &swapchain_index
+    };
+    VK_CHECK(vkQueuePresentKHR(context.graphics_queue.queue, &present_info));
+    context.current_frame += (context.current_frame + 1) % FLIGHT_COUNT;
+}*/

@@ -37,6 +37,7 @@ struct VulkanFrameData
 
 struct VulkanContext
 {
+    uint32_t current_frame;
     VkInstance instance;
     VkDevice device;
     VkPhysicalDevice physical_device;
@@ -60,7 +61,7 @@ struct VulkanContext
 
 struct VulkanBuffer
 {
-    VkBuffer buffer;
+    VkBuffer handle;
     VmaAllocation allocation;
     VmaAllocationInfo info;
 };
@@ -77,7 +78,7 @@ struct VulkanImageTransitionInfo
 
 struct VulkanImage
 {
-    VkImage image;
+    VkImage handle;
     VkImageView view;
     VmaAllocation allocation;
     VmaAllocationInfo info;
@@ -112,6 +113,7 @@ void recreate_swapchain(VulkanContext& context, uint32_t width, uint32_t height)
 
 /* Object Creation */
 VulkanBuffer vulkan_create_buffer(const VulkanContext& context, uint64_t size, VkBufferUsageFlags usage, VmaMemoryUsage alloc_usage);
+VulkanBuffer vulkan_create_buffer(const VulkanContext& context, uint64_t size, void* data, VkBufferUsageFlags usage);
 void vulkan_destroy_buffer(const VulkanContext& context, VulkanBuffer& buffer);
 VulkanImage vulkan_create_image(const VulkanContext& context, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped);
 VulkanImage vulkan_create_image(const VulkanContext& context, void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped);
@@ -121,35 +123,11 @@ void vulkan_destroy_graphics_pipeline(const VulkanContext& context, VulkanGraphi
 /* Rendering */
 void vulkan_immediate_begin(const VulkanContext& context);
 void vulkan_immediate_end(const VulkanContext& context);
-void vulkan_frame_begin();
-void vulkan_frame_end();
+/*VulkanFrameData*/VkCommandBuffer vulkan_frame_begin(const VulkanContext& context, const VulkanGraphicsPipeline& pipeline);
+void vulkan_frame_end(const VulkanContext& context);
 
 /* Misc. */
 void vulkan_cmd_transition_image(VkCommandBuffer cmd, VkImage image, const VulkanImageTransitionInfo& info, VkImageSubresourceRange sub_image);
-
-/*
-class Twilight(or whatever name)
-{
-    VulkanContext context;
-    TLWindow window;
-
-    ~Twilight()
-    {
-        destroy_vulkan(context);
-    }
-
-    void init()
-    {
-        init_window("Name", Width, Height);
-
-        init_vulkan(window);
-    }
-
-    void recreate_swapchain()
-    {
-        destroy_swapchain(context);
-        create_swapchain(context, window.get_width(), window.get_height());
-    }
-}
-
-*/
+void vulkan_cmd_copy_buffer_to_buffer(VkCommandBuffer cmd, uint64_t size, const VulkanBuffer& src, const VulkanBuffer dst);
+void vulkan_cmd_copy_buffer_to_image(VkCommandBuffer cmd, const VulkanBuffer& src, const VulkanImage& dst);
+bool vulkan_load_shader_module(const char* path, VkDevice device, VkShaderModule* out_module);

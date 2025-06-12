@@ -19,5 +19,4 @@ void main() {
     vec3 diffuse = light_color * max(dot(f_norm, light_dir), 0.0);
 
     out_color = vec4(texture(tex, f_tex).rgb * (ambient + diffuse), 1.0);
-    //out_color = texture(tex, f_tex);
 }

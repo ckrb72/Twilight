@@ -127,13 +127,13 @@ int main()
     VkPipelineLayout pipeline_layout;
     VK_CHECK(vkCreatePipelineLayout(context.device, &pipeline_layout_info, nullptr, &pipeline_layout));
 
-    VkShaderModule vertex_shader;
-    load_shader_module("../shaders/default.vert.spv", context.device, &vertex_shader);
-    VkShaderModule fragment_shader;
-    load_shader_module("../shaders/default.frag.spv", context.device, &fragment_shader);
-
     VulkanGraphicsPipeline graphics_pipeline;
     {
+        VkShaderModule vertex_shader;
+        vulkan_load_shader_module("../shaders/default.vert.spv", context.device, &vertex_shader);
+        VkShaderModule fragment_shader;
+        vulkan_load_shader_module("../shaders/default.frag.spv", context.device, &fragment_shader);
+
         VulkanGraphicsPipelineCompiler graphics_pipeline_compiler;
         graphics_pipeline_compiler.set_layout(pipeline_layout);
         graphics_pipeline_compiler.add_binding(0, 8 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX);
@@ -143,11 +143,11 @@ int main()
         graphics_pipeline_compiler.add_shader(vertex_shader, VK_SHADER_STAGE_VERTEX_BIT);
         graphics_pipeline_compiler.add_shader(fragment_shader, VK_SHADER_STAGE_FRAGMENT_BIT);
         graphics_pipeline = graphics_pipeline_compiler.compile(context);
+        
+        vkDestroyShaderModule(context.device, vertex_shader, nullptr);
+        vkDestroyShaderModule(context.device, fragment_shader, nullptr);
     }
     
-    vkDestroyShaderModule(context.device, vertex_shader, nullptr);
-    vkDestroyShaderModule(context.device, fragment_shader, nullptr);
-
     VkDescriptorPoolSize pool_sizes[] = {
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1}
     };
@@ -246,6 +246,7 @@ int main()
     void* vert_ptr = staging_buffer.info.pMappedData;
     memcpy(vert_ptr, vertices, sizeof(vertices));
 
+
     unsigned int indices[] = 
     {
         0, 1, 2,
@@ -272,26 +273,12 @@ int main()
     memcpy(index_ptr, indices, sizeof(indices));
 
     VulkanBuffer index_buffer = vulkan_create_buffer(context, sizeof(indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
-
     VulkanBuffer vertex_buffer = vulkan_create_buffer(context, sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
-
     vulkan_immediate_begin(context);
-    {
-        VkBufferCopy copy_info = {
-            .srcOffset = 0,
-            .dstOffset = 0,
-            .size = sizeof(vertices),
-        };
-        vkCmdCopyBuffer(context.immediate_buffer, staging_buffer.buffer, vertex_buffer.buffer, 1, &copy_info);
-    }
-    {
-        VkBufferCopy copy_info = {
-            .srcOffset = 0,
-            .dstOffset = 0,
-            .size = sizeof(indices)
-        };
-        vkCmdCopyBuffer(context.immediate_buffer, index_staging_buffer.buffer, index_buffer.buffer, 1, &copy_info);
-    }
+
+    vulkan_cmd_copy_buffer_to_buffer(context.immediate_buffer, sizeof(vertices), staging_buffer, vertex_buffer);
+    vulkan_cmd_copy_buffer_to_buffer(context.immediate_buffer, sizeof(indices), index_staging_buffer, index_buffer);
+
     vulkan_immediate_end(context);
 
     vulkan_destroy_buffer(context, staging_buffer);
@@ -299,7 +286,6 @@ int main()
 
     VulkanImage depth_image = vulkan_create_image(context, VkExtent3D{context.swapchain.extent.width, context.swapchain.extent.height, 1}, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, false);
 
-    uint32_t current_frame = 0;
 
     float angle = 0.0f;
 
@@ -313,7 +299,7 @@ int main()
         ImGui::ShowDemoWindow();
         ImGui::Render();
 
-        VulkanFrameData* frame = &context.frames[current_frame];
+        VulkanFrameData* frame = &context.frames[context.current_frame];
         VkCommandBuffer cmd = frame->cmd_buffer;
 
         // Wait for fence to be signaled (if first loop fence is already signaled)
@@ -325,7 +311,7 @@ int main()
 
         // Acquire swapchain image. Swapchain_semaphore will be signaled once it has been acquired
         uint32_t swapchain_index;
-        VK_CHECK(vkAcquireNextImageKHR(context.device, context.swapchain.swapchain, UINT64_MAX, frame->swapchain_semaphore, nullptr, &swapchain_index))
+        VK_CHECK(vkAcquireNextImageKHR(context.device, context.swapchain.swapchain, UINT64_MAX, frame->swapchain_semaphore, nullptr, &swapchain_index));
 
         VkImage swapchain_image = context.swapchain.images[swapchain_index];
 
@@ -358,7 +344,7 @@ int main()
             .new_layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
         };
 
-        vulkan_cmd_transition_image(cmd, depth_image.image, depth_transition_info, {VK_IMAGE_ASPECT_DEPTH_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+        vulkan_cmd_transition_image(cmd, depth_image.handle, depth_transition_info, {VK_IMAGE_ASPECT_DEPTH_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
 
         VkRenderingAttachmentInfo color_attachment_info = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -409,8 +395,8 @@ int main()
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
         VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer.buffer, offsets);
-        vkCmdBindIndexBuffer(cmd, index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer.handle, offsets);
+        vkCmdBindIndexBuffer(cmd, index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
 
         glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -2.0f));
         model_mat = glm::rotate(model_mat, glm::radians(angle), glm::vec3(1.0f, 1.0f, 1.0f));
@@ -511,7 +497,7 @@ int main()
             .pImageIndices = &swapchain_index
         };
         VK_CHECK(vkQueuePresentKHR(context.graphics_queue.queue, &present_info));
-        current_frame += (current_frame + 1) % FLIGHT_COUNT;
+        context.current_frame += (context.current_frame + 1) % FLIGHT_COUNT;
     }
 
     vkDeviceWaitIdle(context.device);
@@ -534,36 +520,6 @@ int main()
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
-}
-
-
-bool load_shader_module(const char* path, VkDevice device, VkShaderModule* out_module)
-{
-    std::ifstream file(path, std::ios::ate | std::ios::binary);
-    if(!file.is_open())
-    {
-        std::cerr << "Failed to open file: " << path << std::endl;
-        return false;
-    }
-
-    size_t file_size = (size_t)file.tellg();
-    std::vector<uint32_t> buffer(file_size / sizeof(uint32_t));
-    file.seekg(0);
-    file.read((char*)buffer.data(), file_size);
-    file.close();
-
-    VkShaderModuleCreateInfo create_info = {
-        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = buffer.size() * sizeof(uint32_t),
-        .pCode = buffer.data()
-    };
-
-    VkShaderModule shader_module;
-    VK_CHECK(vkCreateShaderModule(device, &create_info, nullptr, &shader_module))
-
-    *out_module = shader_module;
-
-    return true;
 }
 
 void load_model(const std::string& path)
