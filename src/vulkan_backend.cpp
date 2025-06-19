@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 #include <fstream>
 #include "vma.h"
+#include <cmath>
 
 static void create_swapchain(VulkanContext& context, uint32_t width, uint32_t height);
 static void destroy_swapchain(VulkanContext& context);

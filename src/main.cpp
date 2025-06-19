@@ -1,7 +1,3 @@
-/*
-    Engine Name Ideas - Twilight, Nightfall, Spectre, Mirage
-*/
-
 #include <iostream>
 
 #define GLFW_INCLUDE_VULKAN
@@ -26,9 +22,13 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-bool load_shader_module(const char* path, VkDevice device, VkShaderModule* out_module);
-
 const int WIN_WIDTH = 1920, WIN_HEIGHT = 1080;
+
+struct GlobalDescriptors
+{
+    glm::mat4 projection;
+    glm::mat4 view;
+};
 
 
 int main()
@@ -111,16 +111,93 @@ int main()
     VkDescriptorSetLayout descriptor_layout;
     VK_CHECK(vkCreateDescriptorSetLayout(context.device, &descriptor_layout_info, nullptr, &descriptor_layout));
 
+    glm::mat4 view = glm::mat4(1.0f);
+
+    VkDescriptorPoolSize global_pool_size[] = {
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 8}
+    };
+
+    // Shouldn't do it like this... Should do one pool per frame in flight and allocate all descriptor sets from that
+    VkDescriptorPoolCreateInfo global_pool_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = 2,
+        .poolSizeCount = 1,
+        .pPoolSizes = global_pool_size
+    };
+
+    VkDescriptorPool global_pool;
+    VK_CHECK(vkCreateDescriptorPool(context.device, &global_pool_info, nullptr, &global_pool));
+
+    VkDescriptorSetLayout global_layout;
+    {
+        VkDescriptorSetLayoutBinding ubo = {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        };
+
+        VkDescriptorSetLayoutCreateInfo layout_info = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = 1,
+            .pBindings = &ubo,
+        };
+
+        VK_CHECK(vkCreateDescriptorSetLayout(context.device, &layout_info, nullptr, &global_layout));
+    }
+
+    VkDescriptorSet global_set;
+    {
+        VkDescriptorSetAllocateInfo descriptor_set_info = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = global_pool,
+            .descriptorSetCount = 1,
+            .pSetLayouts = &global_layout,
+        };
+
+        VK_CHECK(vkAllocateDescriptorSets(context.device, &descriptor_set_info, &global_set));
+    }
+    
+    glm::mat4 persp = glm::perspective(glm::radians(45.0f), (float)WIN_WIDTH / (float)WIN_HEIGHT, 0.1f, 100.0f);
+    GlobalDescriptors global_descriptors = 
+    {
+        .projection = persp,
+        .view = glm::mat4(1.0f)
+    };
+
+    VulkanBuffer global_ubo = vulkan_create_buffer(context, sizeof(global_descriptors), &global_descriptors, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+
+    {
+        VkDescriptorBufferInfo buff_info = {
+            .buffer = global_ubo.handle,
+            .offset = 0,
+            .range = sizeof(GlobalDescriptors)
+        };
+
+        VkWriteDescriptorSet write_info = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = global_set,
+            .dstBinding = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .pBufferInfo = &buff_info
+        };
+
+        vkUpdateDescriptorSets(context.device, 1, &write_info, 0, nullptr);
+    }
+
     VkPushConstantRange push_constant = {
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
         .offset = 0,
         .size = sizeof(glm::mat4),
     };
 
+    VkDescriptorSetLayout set_layouts[] = { global_layout, descriptor_layout };
+
     VkPipelineLayoutCreateInfo pipeline_layout_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = 1,
-        .pSetLayouts = &descriptor_layout,
+        .setLayoutCount = 2,
+        .pSetLayouts = set_layouts,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_constant
     };
@@ -403,12 +480,11 @@ int main()
         model_mat = glm::scale(model_mat, glm::vec3(0.25f));
 
         angle += 0.05f;
+        
+        VkDescriptorSet descriptor_sets[] = { global_set, descriptor_set };
 
-        glm::mat4 persp = glm::perspective(glm::radians(45.0f), (float)WIN_WIDTH / (float)WIN_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 push_mat = persp * model_mat;
-
-        vkCmdPushConstants(cmd, *graphics_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), glm::value_ptr(push_mat));
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *graphics_pipeline.layout, 0, 1, &descriptor_set, 0, nullptr);
+        vkCmdPushConstants(cmd, *graphics_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), glm::value_ptr(model_mat));
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *graphics_pipeline.layout, 0, 2, descriptor_sets, 0, nullptr);
         vkCmdDrawIndexed(cmd, 36, 1, 0, 0, 0);
 
         vkCmdEndRendering(cmd);
@@ -504,6 +580,9 @@ int main()
 
     ImGui_ImplVulkan_Shutdown();
     vkDestroyDescriptorPool(context.device, imgui_pool, nullptr);
+    vkDestroyDescriptorPool(context.device, global_pool, nullptr);
+    vkDestroyDescriptorSetLayout(context.device, global_layout, nullptr);
+    vulkan_destroy_buffer(context, global_ubo);
 
     vulkan_destroy_buffer(context, vertex_buffer);
     vulkan_destroy_buffer(context, index_buffer);
