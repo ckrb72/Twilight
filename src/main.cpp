@@ -30,6 +30,12 @@ struct GlobalDescriptors
     glm::mat4 view;
 };
 
+struct PushConstants
+{
+    glm::mat4 model;
+    glm::mat4 norm_mat;
+};
+
 
 int main()
 {
@@ -159,6 +165,7 @@ int main()
     }
     
     glm::mat4 persp = glm::perspective(glm::radians(45.0f), (float)WIN_WIDTH / (float)WIN_HEIGHT, 0.1f, 100.0f);
+    persp[1][1] *= -1.0;
     GlobalDescriptors global_descriptors = 
     {
         .projection = persp,
@@ -189,7 +196,7 @@ int main()
     VkPushConstantRange push_constant = {
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
         .offset = 0,
-        .size = sizeof(glm::mat4),
+        .size = sizeof(PushConstants),
     };
 
     VkDescriptorSetLayout set_layouts[] = { global_layout, descriptor_layout };
@@ -308,15 +315,15 @@ int main()
         0.5, -0.5, -0.5,    1.0, 1.0,   1.0, 0.0, 0.0,
         0.5, -0.5, 0.5,     0.0, 1.0,   1.0, 0.0, 0.0,
 
-        -0.5, -0.5, 0.5,    0.0, 0.0,   0.0, 1.0, 0.0,
-        0.5, -0.5, 0.5,     1.0, 0.0,   0.0, 1.0, 0.0,
-        0.5, -0.5, -0.5,    1.0, 1.0,   0.0, 1.0, 0.0,
-        -0.5, -0.5, -0.5,   0.0, 1.0,   0.0, 1.0, 0.0,
+        -0.5, -0.5, 0.5,    0.0, 0.0,   0.0, -1.0, 0.0,
+        0.5, -0.5, 0.5,     1.0, 0.0,   0.0, -1.0, 0.0,
+        0.5, -0.5, -0.5,    1.0, 1.0,   0.0, -1.0, 0.0,
+        -0.5, -0.5, -0.5,   0.0, 1.0,   0.0, -1.0, 0.0,
 
-        -0.5, 0.5, -0.5,    0.0, 0.0,   0.0, -1.0, 0.0,
-        0.5, 0.5, -0.5,     1.0, 0.0,   0.0, -1.0, 0.0,
-        0.5, 0.5, 0.5,      1.0, 1.0,   0.0, -1.0, 0.0,
-        -0.5, 0.5, 0.5,     0.0, 1.0,   0.0, -1.0, 0.0
+        -0.5, 0.5, -0.5,    0.0, 0.0,   0.0, 1.0, 0.0,
+        0.5, 0.5, -0.5,     1.0, 0.0,   0.0, 1.0, 0.0,
+        0.5, 0.5, 0.5,      1.0, 1.0,   0.0, 1.0, 0.0,
+        -0.5, 0.5, 0.5,     0.0, 1.0,   0.0, 1.0, 0.0
     };
     
     VulkanBuffer staging_buffer = vulkan_create_buffer(context, sizeof(vertices), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
@@ -483,8 +490,14 @@ int main()
         
         VkDescriptorSet descriptor_sets[] = { global_set, descriptor_set };
 
-        vkCmdPushConstants(cmd, *graphics_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), glm::value_ptr(model_mat));
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *graphics_pipeline.layout, 0, 2, descriptor_sets, 0, nullptr);
+        PushConstants push_constants = 
+        {
+            .model = model_mat,
+            .norm_mat = glm::transpose(glm::inverse(model_mat))
+        };
+
+        vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push_constants);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 2, descriptor_sets, 0, nullptr);
         vkCmdDrawIndexed(cmd, 36, 1, 0, 0, 0);
 
         vkCmdEndRendering(cmd);

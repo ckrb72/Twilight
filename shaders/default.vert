@@ -18,11 +18,12 @@ layout(set = 0, binding = 0) uniform global_ubo
 layout(push_constant) uniform pconstant
 {
     mat4 model;
+    mat4 norm_mat;
 }pc;
 
 void main() {
-    gl_Position = ubo.projection * ubo.view * pc.model * vec4(v_pos, 1.0);
+    gl_Position = ubo.projection * pc.model * vec4(v_pos, 1.0);
     f_tex = v_tex;
-    f_pos = v_pos;      // Multiply times model matrix
-    f_norm = v_norm;    // Multiply times inverse_transpose model matrix
+    f_pos = vec3(pc.model * vec4(v_pos, 1.0));      // Multiply times model matrix
+    f_norm = normalize(mat3(transpose(inverse(pc.model))) * v_norm);    // Multiply times transpose_inverse model matrix
 }
