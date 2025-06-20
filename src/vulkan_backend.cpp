@@ -90,19 +90,19 @@ VulkanContext init_vulkan(void* win, uint32_t width, uint32_t height)
 
     for(int i = 0; i < FLIGHT_COUNT; i++)
     {
-        VK_CHECK(vkCreateCommandPool(context.device, &cmd_pool_info, nullptr, &context.frames[i].cmd_pool));
+        VK_CHECK(vkCreateCommandPool(context.device, &cmd_pool_info, nullptr, &context.frame_data[i].cmd_pool));
 
         VkCommandBufferAllocateInfo cmd_buf_info = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            .commandPool = context.frames[i].cmd_pool,
+            .commandPool = context.frame_data[i].cmd_pool,
             .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
             .commandBufferCount = 1
         };
 
-        VK_CHECK(vkAllocateCommandBuffers(context.device, &cmd_buf_info, &context.frames[i].cmd_buffer));
-        VK_CHECK(vkCreateSemaphore(context.device, &semaphore_info, nullptr, &context.frames[i].swapchain_semaphore));
-        VK_CHECK(vkCreateSemaphore(context.device, &semaphore_info, nullptr, &context.frames[i].render_semaphore));
-        VK_CHECK(vkCreateFence(context.device, &fence_info, nullptr, &context.frames[i].render_fence));
+        VK_CHECK(vkAllocateCommandBuffers(context.device, &cmd_buf_info, &context.frame_context[i].cmd));
+        VK_CHECK(vkCreateSemaphore(context.device, &semaphore_info, nullptr, &context.frame_data[i].swapchain_semaphore));
+        VK_CHECK(vkCreateSemaphore(context.device, &semaphore_info, nullptr, &context.frame_data[i].render_semaphore));
+        VK_CHECK(vkCreateFence(context.device, &fence_info, nullptr, &context.frame_data[i].render_fence));
     }
 
     VK_CHECK(vkCreateFence(context.device, &fence_info, nullptr, &context.immediate_fence));
@@ -131,10 +131,10 @@ void destroy_vulkan(VulkanContext& context)
 
     for(int i = 0; i < FLIGHT_COUNT; i++)
     {
-        vkDestroyCommandPool(context.device, context.frames[i].cmd_pool, nullptr);
-        vkDestroySemaphore(context.device, context.frames[i].render_semaphore, nullptr);
-        vkDestroySemaphore(context.device, context.frames[i].swapchain_semaphore, nullptr);
-        vkDestroyFence(context.device, context.frames[i].render_fence, nullptr);
+        vkDestroyCommandPool(context.device, context.frame_data[i].cmd_pool, nullptr);
+        vkDestroySemaphore(context.device, context.frame_data[i].render_semaphore, nullptr);
+        vkDestroySemaphore(context.device, context.frame_data[i].swapchain_semaphore, nullptr);
+        vkDestroyFence(context.device, context.frame_data[i].render_fence, nullptr);
     }
     
     vkDestroyCommandPool(context.device, context.immediate_pool, nullptr);
@@ -532,19 +532,52 @@ bool vulkan_load_shader_module(const char* path, VkDevice device, VkShaderModule
     return true;
 }
 
-/*
+VulkanFrameContext vulkan_frame_begin(VulkanContext& context)
+{
+
+    const ContextInternalFrameData* frame_data = &context.frame_data[context.current_frame];
+    VulkanFrameContext* frame_context = &context.frame_context[context.current_frame];
+
+    // Wait for fence to be signaled (if first loop fence is already signaled)
+    VK_CHECK(vkWaitForFences(context.device, 1, &frame_data->render_fence, true, UINT64_MAX));
+    // Here Fence is signaled
+
+    // Reset Fence to unsignaled
+    VK_CHECK(vkResetFences(context.device, 1, &frame_data->render_fence));
+
+    // Acquire swapchain image. Swapchain_semaphore will be signaled once it has been acquired
+    VK_CHECK(vkAcquireNextImageKHR(context.device, context.swapchain.swapchain, UINT64_MAX, frame_data->swapchain_semaphore, nullptr, &frame_context->swapchain_index));
+
+
+    VK_CHECK(vkResetCommandBuffer(frame_context->cmd, 0));
+
+    VkCommandBufferBeginInfo cmd_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    };
+
+    VK_CHECK(vkBeginCommandBuffer(frame_context->cmd, &cmd_info));
+
+    return *frame_context;
+}
+
 void vulkan_frame_end(VulkanContext& context)
 {
+    ContextInternalFrameData* frame_data = &context.frame_data[context.current_frame];
+    VulkanFrameContext* frame_context = &context.frame_context[context.current_frame];
+
+    VK_CHECK(vkEndCommandBuffer(frame_context->cmd));
+
     // Submit the commands to the command buffer
     VkCommandBufferSubmitInfo cmd_submit_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-        .commandBuffer = cmd,
+        .commandBuffer = frame_context->cmd,
         .deviceMask = 0
     };
 
     VkSemaphoreSubmitInfo wait_info = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-        .semaphore = frame->swapchain_semaphore,
+        .semaphore = frame_data->swapchain_semaphore,
         .value = 1,
         .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR,
         .deviceIndex = 0
@@ -552,7 +585,7 @@ void vulkan_frame_end(VulkanContext& context)
 
     VkSemaphoreSubmitInfo signal_info = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-        .semaphore = frame->render_semaphore,
+        .semaphore = frame_data->render_semaphore,
         .value = 1,
         .stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR,
         .deviceIndex = 0
@@ -569,16 +602,17 @@ void vulkan_frame_end(VulkanContext& context)
     };
 
     // Submits commands to queue and sets fence to signal when done
-    VK_CHECK(vkQueueSubmit2(context.graphics_queue.queue, 1, &submit_info, frame->render_fence));
+    VK_CHECK(vkQueueSubmit2(context.graphics_queue.queue, 1, &submit_info, frame_data->render_fence));
 
     VkPresentInfoKHR present_info = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &frame->render_semaphore,
+        .pWaitSemaphores = &frame_data->render_semaphore,
         .swapchainCount = 1,
         .pSwapchains = &context.swapchain.swapchain,
-        .pImageIndices = &swapchain_index
+        .pImageIndices = &frame_context->swapchain_index
     };
+
     VK_CHECK(vkQueuePresentKHR(context.graphics_queue.queue, &present_info));
     context.current_frame += (context.current_frame + 1) % FLIGHT_COUNT;
-}*/
+}

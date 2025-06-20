@@ -22,6 +22,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include "DescriptorAllocator.h"
+#include "DescriptorLayoutCompiler.h"
+
 const int WIN_WIDTH = 1920, WIN_HEIGHT = 1080;
 
 struct GlobalDescriptors
@@ -101,97 +104,24 @@ int main()
     ImGui_ImplVulkan_Init(&imgui_info);
     ImGui_ImplVulkan_CreateFontsTexture();
 
-    VkDescriptorSetLayoutBinding descriptor_binding = {
-        .binding = 0,
-        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = 1,
-        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
-    };
-
-    VkDescriptorSetLayoutCreateInfo descriptor_layout_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 1,
-        .pBindings = &descriptor_binding
-    };
 
     VkDescriptorSetLayout descriptor_layout;
-    VK_CHECK(vkCreateDescriptorSetLayout(context.device, &descriptor_layout_info, nullptr, &descriptor_layout));
-
-    glm::mat4 view = glm::mat4(1.0f);
-
-    VkDescriptorPoolSize global_pool_size[] = {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 8}
-    };
-
-    // Shouldn't do it like this... Should do one pool per frame in flight and allocate all descriptor sets from that
-    VkDescriptorPoolCreateInfo global_pool_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .maxSets = 2,
-        .poolSizeCount = 1,
-        .pPoolSizes = global_pool_size
-    };
-
-    VkDescriptorPool global_pool;
-    VK_CHECK(vkCreateDescriptorPool(context.device, &global_pool_info, nullptr, &global_pool));
+    {
+        DescriptorLayoutCompiler layout_compiler;
+        layout_compiler.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
+        descriptor_layout = layout_compiler.compile(context.device);
+    }
 
     VkDescriptorSetLayout global_layout;
     {
-        VkDescriptorSetLayoutBinding ubo = {
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-        };
-
-        VkDescriptorSetLayoutCreateInfo layout_info = {
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = 1,
-            .pBindings = &ubo,
-        };
-
-        VK_CHECK(vkCreateDescriptorSetLayout(context.device, &layout_info, nullptr, &global_layout));
+        DescriptorLayoutCompiler layout_compiler;
+        layout_compiler.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
+        global_layout = layout_compiler.compile(context.device);
     }
 
-    VkDescriptorSet global_set;
-    {
-        VkDescriptorSetAllocateInfo descriptor_set_info = {
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = global_pool,
-            .descriptorSetCount = 1,
-            .pSetLayouts = &global_layout,
-        };
-
-        VK_CHECK(vkAllocateDescriptorSets(context.device, &descriptor_set_info, &global_set));
-    }
-    
-    glm::mat4 persp = glm::perspective(glm::radians(45.0f), (float)WIN_WIDTH / (float)WIN_HEIGHT, 0.1f, 100.0f);
-    persp[1][1] *= -1.0;
-    GlobalDescriptors global_descriptors = 
-    {
-        .projection = persp,
-        .view = glm::mat4(1.0f)
-    };
-
-    VulkanBuffer global_ubo = vulkan_create_buffer(context, sizeof(global_descriptors), &global_descriptors, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-
-    {
-        VkDescriptorBufferInfo buff_info = {
-            .buffer = global_ubo.handle,
-            .offset = 0,
-            .range = sizeof(GlobalDescriptors)
-        };
-
-        VkWriteDescriptorSet write_info = {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = global_set,
-            .dstBinding = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pBufferInfo = &buff_info
-        };
-
-        vkUpdateDescriptorSets(context.device, 1, &write_info, 0, nullptr);
-    }
+    DescriptorAllocator descriptor_allocator;
+    descriptor_allocator.init_pool(context.device);
+    VkDescriptorSet global_set = descriptor_allocator.allocate(context.device, global_layout);
 
     VkPushConstantRange push_constant = {
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
@@ -232,29 +162,7 @@ int main()
         vkDestroyShaderModule(context.device, fragment_shader, nullptr);
     }
     
-    VkDescriptorPoolSize pool_sizes[] = {
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1}
-    };
-
-    VkDescriptorPoolCreateInfo descriptor_pool_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .maxSets = 1,
-        .poolSizeCount = 1,
-        .pPoolSizes = pool_sizes
-    };
-
-    VkDescriptorPool descriptor_pool;
-    VK_CHECK(vkCreateDescriptorPool(context.device, &descriptor_pool_info, nullptr, &descriptor_pool));
-
-    VkDescriptorSetAllocateInfo descriptor_set_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = descriptor_pool,
-        .descriptorSetCount = 1,
-        .pSetLayouts = &descriptor_layout,
-    };
-
-    VkDescriptorSet descriptor_set;
-    VK_CHECK(vkAllocateDescriptorSets(context.device, &descriptor_set_info, &descriptor_set));
+    VkDescriptorSet descriptor_set = descriptor_allocator.allocate(context.device, descriptor_layout);
 
     std::vector<uint8_t> image_data = std::vector<uint8_t>(16);
     for(int i = 0; i < 16; i += 4)
@@ -370,8 +278,36 @@ int main()
 
     VulkanImage depth_image = vulkan_create_image(context, VkExtent3D{context.swapchain.extent.width, context.swapchain.extent.height, 1}, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, false);
 
-
     float angle = 0.0f;
+
+    glm::mat4 persp = glm::perspective(glm::radians(45.0f), (float)WIN_WIDTH / (float)WIN_HEIGHT, 0.1f, 100.0f);
+    persp[1][1] *= -1.0;
+    GlobalDescriptors global_descriptors = 
+    {
+        .projection = persp,
+        .view = glm::mat4(1.0f)
+    };
+
+    VulkanBuffer global_ubo = vulkan_create_buffer(context, sizeof(global_descriptors), &global_descriptors, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+
+    {
+        VkDescriptorBufferInfo buff_info = {
+            .buffer = global_ubo.handle,
+            .offset = 0,
+            .range = sizeof(GlobalDescriptors)
+        };
+
+        VkWriteDescriptorSet write_info = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = global_set,
+            .dstBinding = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .pBufferInfo = &buff_info
+        };
+
+        vkUpdateDescriptorSets(context.device, 1, &write_info, 0, nullptr);
+    }
 
     while(!glfwWindowShouldClose(window))
     {
@@ -383,30 +319,9 @@ int main()
         ImGui::ShowDemoWindow();
         ImGui::Render();
 
-        VulkanFrameData* frame = &context.frames[context.current_frame];
-        VkCommandBuffer cmd = frame->cmd_buffer;
-
-        // Wait for fence to be signaled (if first loop fence is already signaled)
-        VK_CHECK(vkWaitForFences(context.device, 1, &frame->render_fence, true, UINT64_MAX));
-        // Here Fence is signaled
-
-        // Reset Fence to unsignaled
-        VK_CHECK(vkResetFences(context.device, 1, &frame->render_fence));
-
-        // Acquire swapchain image. Swapchain_semaphore will be signaled once it has been acquired
-        uint32_t swapchain_index;
-        VK_CHECK(vkAcquireNextImageKHR(context.device, context.swapchain.swapchain, UINT64_MAX, frame->swapchain_semaphore, nullptr, &swapchain_index));
-
-        VkImage swapchain_image = context.swapchain.images[swapchain_index];
-
-        VK_CHECK(vkResetCommandBuffer(cmd, 0));
-
-        VkCommandBufferBeginInfo cmd_info = {
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-        };
-
-        VK_CHECK(vkBeginCommandBuffer(cmd, &cmd_info));
+        VulkanFrameContext frame_context = vulkan_frame_begin(context);
+        uint32_t swapchain_index = frame_context.swapchain_index;
+        VkCommandBuffer cmd = frame_context.cmd;
 
         VulkanImageTransitionInfo initial_transition_info = {
             .src_access = VK_ACCESS_2_NONE,
@@ -417,7 +332,7 @@ int main()
             .new_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         };
 
-        vulkan_cmd_transition_image(cmd, swapchain_image, initial_transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
+        vulkan_cmd_transition_image(cmd, context.swapchain.images[swapchain_index], initial_transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
 
         VulkanImageTransitionInfo depth_transition_info = {
             .src_access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
@@ -537,63 +452,15 @@ int main()
             .new_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
         };
 
-        vulkan_cmd_transition_image(cmd, swapchain_image, transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
+        vulkan_cmd_transition_image(cmd, context.swapchain.images[frame_context.swapchain_index], transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
 
-        VK_CHECK(vkEndCommandBuffer(cmd));
-        
-        // Submit the commands to the command buffer
-        VkCommandBufferSubmitInfo cmd_submit_info = {
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-            .commandBuffer = cmd,
-            .deviceMask = 0
-        };
-
-        VkSemaphoreSubmitInfo wait_info = {
-            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-            .semaphore = frame->swapchain_semaphore,
-            .value = 1,
-            .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR,
-            .deviceIndex = 0
-        };
-
-        VkSemaphoreSubmitInfo signal_info = {
-            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-            .semaphore = frame->render_semaphore,
-            .value = 1,
-            .stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR,
-            .deviceIndex = 0
-        };
-
-        VkSubmitInfo2 submit_info = {
-            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-            .waitSemaphoreInfoCount = 1,
-            .pWaitSemaphoreInfos = &wait_info,
-            .commandBufferInfoCount = 1,
-            .pCommandBufferInfos = &cmd_submit_info,
-            .signalSemaphoreInfoCount = 1,
-            .pSignalSemaphoreInfos = &signal_info
-        };
-
-        // Submits commands to queue and sets fence to signal when done
-        VK_CHECK(vkQueueSubmit2(context.graphics_queue.queue, 1, &submit_info, frame->render_fence));
-
-        VkPresentInfoKHR present_info = {
-            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &frame->render_semaphore,
-            .swapchainCount = 1,
-            .pSwapchains = &context.swapchain.swapchain,
-            .pImageIndices = &swapchain_index
-        };
-        VK_CHECK(vkQueuePresentKHR(context.graphics_queue.queue, &present_info));
-        context.current_frame += (context.current_frame + 1) % FLIGHT_COUNT;
+        vulkan_frame_end(context);
     }
 
     vkDeviceWaitIdle(context.device);
 
     ImGui_ImplVulkan_Shutdown();
     vkDestroyDescriptorPool(context.device, imgui_pool, nullptr);
-    vkDestroyDescriptorPool(context.device, global_pool, nullptr);
     vkDestroyDescriptorSetLayout(context.device, global_layout, nullptr);
     vulkan_destroy_buffer(context, global_ubo);
 
@@ -604,7 +471,7 @@ int main()
     vulkan_destroy_graphics_pipeline(context, graphics_pipeline);
     vkDestroyPipelineLayout(context.device, pipeline_layout, nullptr);
     vkDestroyDescriptorSetLayout(context.device, descriptor_layout, nullptr);
-    vkDestroyDescriptorPool(context.device, descriptor_pool, nullptr);
+    descriptor_allocator.destroy_pool(context.device);
     vkDestroySampler(context.device, sampler, nullptr);
 
     destroy_vulkan(context);
@@ -612,12 +479,4 @@ int main()
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
-}
-
-void load_model(const std::string& path)
-{
-    fastgltf::Parser parser;
-    auto gltf_file = fastgltf::MappedGltfFile::FromPath(path);
-    auto asset = parser.loadGltf(gltf_file.get(), path);
-
 }

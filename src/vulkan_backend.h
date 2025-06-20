@@ -4,6 +4,7 @@
 #include <vulkan/vk_enum_string_helper.h>
 #include <vector>
 #include "vma.h"
+#include "DescriptorAllocator.h"
 
 #define VK_CHECK(x)                                                     \
     do {                                                                \
@@ -27,12 +28,18 @@ struct VulkanSwapchain
     std::vector<VkImageView> views;
 };
 
-struct VulkanFrameData
+struct VulkanFrameContext
+{
+    VkCommandBuffer cmd;
+    DescriptorAllocator descriptor_allocator;
+    uint32_t swapchain_index;
+};
+
+struct ContextInternalFrameData
 {
     VkSemaphore swapchain_semaphore, render_semaphore;
     VkFence render_fence;
     VkCommandPool cmd_pool;
-    VkCommandBuffer cmd_buffer;
 };
 
 struct VulkanContext
@@ -45,7 +52,8 @@ struct VulkanContext
     VkDebugUtilsMessengerEXT debug_messenger;
     VulkanSwapchain swapchain;
     VmaAllocator allocator;
-    VulkanFrameData frames[FLIGHT_COUNT];
+    ContextInternalFrameData frame_data[FLIGHT_COUNT];
+    VulkanFrameContext frame_context[FLIGHT_COUNT];
     VkCommandPool immediate_pool;
     VkCommandBuffer immediate_buffer;
     VkFence immediate_fence;
@@ -89,7 +97,7 @@ struct VulkanImage
 struct VulkanGraphicsPipeline
 {
     VkPipeline pipeline;
-    VkPipelineLayout* layout;
+    VkPipelineLayout layout;
 };
 
 /* Init */
@@ -110,8 +118,8 @@ void vulkan_destroy_graphics_pipeline(const VulkanContext& context, VulkanGraphi
 /* Rendering */
 void vulkan_immediate_begin(const VulkanContext& context);
 void vulkan_immediate_end(const VulkanContext& context);
-/*VulkanFrameContext*/VkCommandBuffer vulkan_frame_begin(const VulkanContext& context, const VulkanGraphicsPipeline& pipeline);
-void vulkan_frame_end(const VulkanContext& context);
+VulkanFrameContext vulkan_frame_begin(VulkanContext& context);
+void vulkan_frame_end(VulkanContext& context);
 
 /* Misc. */
 void vulkan_cmd_transition_image(VkCommandBuffer cmd, VkImage image, const VulkanImageTransitionInfo& info, VkImageSubresourceRange sub_image);

@@ -25,5 +25,5 @@ void main() {
     gl_Position = ubo.projection * pc.model * vec4(v_pos, 1.0);
     f_tex = v_tex;
     f_pos = vec3(pc.model * vec4(v_pos, 1.0));      // Multiply times model matrix
-    f_norm = normalize(mat3(transpose(inverse(pc.model))) * v_norm);    // Multiply times transpose_inverse model matrix
+    f_norm = normalize(mat3(pc.norm_mat) * v_norm);    // Multiply times transpose_inverse model matrix
 }

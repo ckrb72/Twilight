@@ -150,5 +150,5 @@ VulkanGraphicsPipeline VulkanGraphicsPipelineCompiler::compile(const VulkanConte
     VkPipeline pipeline;
     VK_CHECK(vkCreateGraphicsPipelines(context.device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &pipeline));
 
-    return {pipeline, &m_layout};
+    return {pipeline, m_layout};
 }
