@@ -1,0 +1,50 @@
+#pragma once
+#include <string>
+#include <assimp/Importer.hpp>      // C++ importer interface
+#include <assimp/scene.h>           // Output data structure
+#include <assimp/postprocess.h>     // Post processing flags
+
+#include <glm/glm.hpp>
+#include "vulkan_backend.h"
+
+struct Vertex
+{
+    glm::vec3 pos;
+    glm::vec3 norm;
+    glm::vec2 tex;
+};
+
+struct Mesh
+{
+    VulkanBuffer vertices;
+    VulkanBuffer indices;
+    uint32_t index_count;
+    uint32_t material_index;
+};
+
+// Basic node for the scene graph
+// Meshes, lights, cameras, etc. will all be SceneNodes
+struct SceneNode
+{
+    std::vector<Mesh> meshes;
+    std::vector<SceneNode> children;
+};
+
+class AssetManager
+{
+    private:
+        Assimp::Importer importer;
+        VulkanContext* renderer = nullptr;      /* later on when we have a renderer class change this to a pointer to the actual renderer (i.e. const Renderer::Renderer)
+                                                   Then in the load_model function instead of calling vulkan_create_buffer directly just call renderer.create_buffer(data, ...); */
+
+        SceneNode load_node(aiNode* node, const aiScene* scene);
+        void load_vertices(const aiMesh* mesh, std::vector<Vertex>& vertices);
+        void load_indices(const aiMesh* mesh, std::vector<unsigned int>& indices);
+        void load_material(const aiMesh* mesh, const aiScene* scene);
+
+    public:
+        AssetManager();
+        ~AssetManager();
+        void init(VulkanContext* context);
+        SceneNode load_model(const std::string& path);
+};

@@ -8,11 +8,6 @@
 #include <fstream>
 
 #include "vma.h"
-#include "VulkanGraphicsPipelineCompiler.h"
-
-#include <fastgltf/core.hpp>
-#include <fastgltf/types.hpp>
-#include <fastgltf/tools.hpp>
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
@@ -24,6 +19,15 @@
 
 #include "DescriptorAllocator.h"
 #include "DescriptorLayoutCompiler.h"
+#include "GraphicsPipelineCompiler.h"
+#include "AssetManager.h"
+
+
+/*
+
+    Materials will have the texture, colors, etc. as usual but will also have a specific compiled pipeline (and layout)
+    associted with them. So if you want to draw all the meshes with a certain material, you bind that pipeline and then do all the descriptors and drawing and stuff...
+*/
 
 const int WIN_WIDTH = 1920, WIN_HEIGHT = 1080;
 
@@ -38,6 +42,45 @@ struct PushConstants
     glm::mat4 model;
     glm::mat4 norm_mat;
 };
+
+// This should actually be in the renderer and should be called by doing renderer.draw(node);
+void draw_node(VkCommandBuffer cmd, const SceneNode& node)
+{
+    for(const Mesh& mesh : node.meshes)
+    {
+        if(mesh.index_count > 0)
+        {
+            //renderer.bind_material(mesh.material_index)    /* Can implement same basic batching by having a single buffer per material that data is streamed into. Calling this would switch that buffer */
+            //renderer.bind_vertices(mesh.vertices);
+            //renderer.bind_indices(mesh.indices, mesh.index_count);
+            VkDeviceSize sizes[] = {0};
+            vkCmdBindVertexBuffers(cmd, 0, 1, &mesh.vertices.handle, sizes);
+            vkCmdBindIndexBuffer(cmd, mesh.indices.handle, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(cmd, mesh.index_count, 1, 0, 0, 0);
+        }
+    }
+
+    for(const SceneNode& child : node.children)
+    {
+        draw_node(cmd, child);
+    }
+}
+
+void free_node(const VulkanContext& context, SceneNode& node)
+{
+    for(Mesh& mesh : node.meshes)
+    {
+        vulkan_destroy_buffer(context, mesh.vertices);
+        vulkan_destroy_buffer(context, mesh.indices);
+        mesh.index_count = 0;
+        mesh.material_index = 0;
+    }
+
+    for(SceneNode& child : node.children)
+    {
+        free_node(context, child);
+    }
+}
 
 
 int main()
@@ -69,6 +112,7 @@ int main()
 		{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
     };
 
+    
     VkDescriptorPoolCreateInfo imgui_pool_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
@@ -148,12 +192,12 @@ int main()
         VkShaderModule fragment_shader;
         vulkan_load_shader_module("../shaders/default.frag.spv", context.device, &fragment_shader);
 
-        VulkanGraphicsPipelineCompiler graphics_pipeline_compiler;
+        GraphicsPipelineCompiler graphics_pipeline_compiler;
         graphics_pipeline_compiler.set_layout(pipeline_layout);
         graphics_pipeline_compiler.add_binding(0, 8 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX);
         graphics_pipeline_compiler.add_attribute(0, 0, 0, VK_FORMAT_R32G32B32_SFLOAT);
-        graphics_pipeline_compiler.add_attribute(0, 1, 3 * sizeof(float), VK_FORMAT_R32G32_SFLOAT);
-        graphics_pipeline_compiler.add_attribute(0, 2, 5 * sizeof(float), VK_FORMAT_R32G32B32_SFLOAT);
+        graphics_pipeline_compiler.add_attribute(0, 1, 3 * sizeof(float), VK_FORMAT_R32G32B32_SFLOAT);
+        graphics_pipeline_compiler.add_attribute(0, 2, 6 * sizeof(float), VK_FORMAT_R32G32_SFLOAT);
         graphics_pipeline_compiler.add_shader(vertex_shader, VK_SHADER_STAGE_VERTEX_BIT);
         graphics_pipeline_compiler.add_shader(fragment_shader, VK_SHADER_STAGE_FRAGMENT_BIT);
         graphics_pipeline = graphics_pipeline_compiler.compile(context);
@@ -285,7 +329,7 @@ int main()
     GlobalDescriptors global_descriptors = 
     {
         .projection = persp,
-        .view = glm::mat4(1.0f)
+        .view = glm::lookAt(glm::vec3(0.0, 0.0, 0.0), glm::vec3(0.0, 0.0, -1.0), glm::vec3(0.0, 1.0, 0.0))
     };
 
     VulkanBuffer global_ubo = vulkan_create_buffer(context, sizeof(global_descriptors), &global_descriptors, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
@@ -309,9 +353,18 @@ int main()
         vkUpdateDescriptorSets(context.device, 1, &write_info, 0, nullptr);
     }
 
+    double previous_time = glfwGetTime();
+
+    AssetManager asset_manager;
+    asset_manager.init(&context);
+    SceneNode cube_model = asset_manager.load_model("../cube.glb");
+
     while(!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
+        double current_time = glfwGetTime();
+        double delta = current_time - previous_time;
+        previous_time = current_time;
 
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -323,60 +376,49 @@ int main()
         uint32_t swapchain_index = frame_context.swapchain_index;
         VkCommandBuffer cmd = frame_context.cmd;
 
-        VulkanImageTransitionInfo initial_transition_info = {
-            .src_access = VK_ACCESS_2_NONE,
-            .src_stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .dst_access = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT,
-            .dst_stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .new_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        };
+        vulkan_cmd_transition_image(cmd, context.swapchain.images[swapchain_index], {VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+                                    VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+                                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL}, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
 
-        vulkan_cmd_transition_image(cmd, context.swapchain.images[swapchain_index], initial_transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
+        vulkan_cmd_transition_image(cmd, depth_image.handle, {VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, 
+                                    VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT, 
+                                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL}, {VK_IMAGE_ASPECT_DEPTH_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+        
+        {
+            VkRenderingAttachmentInfo color_attachment_info = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = context.swapchain.views[swapchain_index],
+                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                .clearValue = {
+                    .color = {0.1, 0.1, 0.1, 1.0}
+                }
+            };
 
-        VulkanImageTransitionInfo depth_transition_info = {
-            .src_access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-            .src_stage = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-            .dst_access = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-            .dst_stage = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
-            .old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .new_layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
-        };
+            VkRenderingAttachmentInfo depth_attachment_info = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = depth_image.view,
+                .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                .clearValue = {
+                    .depthStencil = {.depth = 1.0f}
+                }
+            };
 
-        vulkan_cmd_transition_image(cmd, depth_image.handle, depth_transition_info, {VK_IMAGE_ASPECT_DEPTH_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+            VkRenderingInfo render_info = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = VkRect2D{ {0, 0}, {context.swapchain.extent.width, context.swapchain.extent.height} },
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &color_attachment_info,
+                .pDepthAttachment = &depth_attachment_info
+            };
 
-        VkRenderingAttachmentInfo color_attachment_info = {
-            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = context.swapchain.views[swapchain_index],
-            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue = {
-                .color = {0.1, 0.1, 0.1, 1.0}
-            }
-        };
+            vkCmdBeginRendering(cmd, &render_info);
+        }
 
-        VkRenderingAttachmentInfo depth_attachment_info = {
-            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = depth_image.view,
-            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue = {
-                .depthStencil = {.depth = 1.0f}
-            }
-        };
-
-        VkRenderingInfo render_info = {
-            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-            .renderArea = VkRect2D{ {0, 0}, {context.swapchain.extent.width, context.swapchain.extent.height} },
-            .layerCount = 1,
-            .colorAttachmentCount = 1,
-            .pColorAttachments = &color_attachment_info,
-            .pDepthAttachment = &depth_attachment_info
-        };
-
-        vkCmdBeginRendering(cmd, &render_info);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline.pipeline);
 
         VkViewport viewport = {
@@ -393,15 +435,11 @@ int main()
         vkCmdSetViewport(cmd, 0, 1, &viewport);
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-        VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer.handle, offsets);
-        vkCmdBindIndexBuffer(cmd, index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
-
-        glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -2.0f));
+        glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -5.0f));
         model_mat = glm::rotate(model_mat, glm::radians(angle), glm::vec3(1.0f, 1.0f, 1.0f));
         model_mat = glm::scale(model_mat, glm::vec3(0.25f));
 
-        angle += 0.05f;
+        angle += 10.0 * delta;
         
         VkDescriptorSet descriptor_sets[] = { global_set, descriptor_set };
 
@@ -413,7 +451,13 @@ int main()
 
         vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push_constants);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 2, descriptor_sets, 0, nullptr);
-        vkCmdDrawIndexed(cmd, 36, 1, 0, 0, 0);
+
+        draw_node(cmd, cube_model);
+
+        /*VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer.handle, offsets);
+        vkCmdBindIndexBuffer(cmd, index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(cmd, 36, 1, 0, 0, 0);*/
 
         vkCmdEndRendering(cmd);
 
@@ -442,22 +486,17 @@ int main()
         vkCmdEndRendering(cmd);
         
         // Transition Image to presentable layout
+        vulkan_cmd_transition_image(cmd, context.swapchain.images[frame_context.swapchain_index], {VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+                                    VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR}, 
+                                    { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
 
-        VulkanImageTransitionInfo transition_info = {
-            .src_access = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-            .src_stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .dst_access = VK_ACCESS_2_NONE,
-            .dst_stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .old_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .new_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-        };
-
-        vulkan_cmd_transition_image(cmd, context.swapchain.images[frame_context.swapchain_index], transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
 
         vulkan_frame_end(context);
     }
 
     vkDeviceWaitIdle(context.device);
+
+    free_node(context, cube_model);
 
     ImGui_ImplVulkan_Shutdown();
     vkDestroyDescriptorPool(context.device, imgui_pool, nullptr);

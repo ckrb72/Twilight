@@ -17,6 +17,7 @@ set(GLM_BUILD_TESTS OFF CACHE BOOL "No glm tests")
 add_subdirectory(vendor/glfw)
 add_subdirectory(vendor/vk-bootstrap)
 add_subdirectory(fastgltf)
+add_subdirectory(vendor/assimp)
 add_subdirectory(glm)
 add_compile_options(-Wno-nullability-completeness)
 
@@ -29,4 +30,4 @@ if(NOT Vulkan_LIBRARIES)
 endif()
 
 add_executable(renderer ${SRC_CXX_FILES})
-target_link_libraries(renderer Vulkan::Vulkan glfw vk-bootstrap::vk-bootstrap fastgltf glm::glm-header-only)
+target_link_libraries(renderer Vulkan::Vulkan glfw vk-bootstrap::vk-bootstrap assimp glm::glm-header-only)

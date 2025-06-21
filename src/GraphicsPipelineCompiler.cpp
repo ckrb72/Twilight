@@ -1,22 +1,22 @@
-#include "VulkanGraphicsPipelineCompiler.h"
+#include "GraphicsPipelineCompiler.h"
 
-VulkanGraphicsPipelineCompiler::VulkanGraphicsPipelineCompiler()
+GraphicsPipelineCompiler::GraphicsPipelineCompiler()
 {
 
 }
 
-VulkanGraphicsPipelineCompiler::~VulkanGraphicsPipelineCompiler()
+GraphicsPipelineCompiler::~GraphicsPipelineCompiler()
 {
 
 }
 
 // The pipeline does not take ownership of this layout and will not destroy it
-void VulkanGraphicsPipelineCompiler::set_layout(VkPipelineLayout layout)
+void GraphicsPipelineCompiler::set_layout(VkPipelineLayout layout)
 {
     m_layout = layout;
 }
 
-void VulkanGraphicsPipelineCompiler::add_binding(uint32_t binding_index, uint32_t stride, VkVertexInputRate rate)
+void GraphicsPipelineCompiler::add_binding(uint32_t binding_index, uint32_t stride, VkVertexInputRate rate)
 {
     VkVertexInputBindingDescription desc = {
         .binding = binding_index,
@@ -27,7 +27,7 @@ void VulkanGraphicsPipelineCompiler::add_binding(uint32_t binding_index, uint32_
     m_bindings.push_back(desc);
 }
 
-void VulkanGraphicsPipelineCompiler::add_attribute(uint32_t binding, uint32_t location, uint32_t offset, VkFormat format)
+void GraphicsPipelineCompiler::add_attribute(uint32_t binding, uint32_t location, uint32_t offset, VkFormat format)
 {
     VkVertexInputAttributeDescription desc = {
         .location = location,
@@ -39,7 +39,7 @@ void VulkanGraphicsPipelineCompiler::add_attribute(uint32_t binding, uint32_t lo
     m_attributes.push_back(desc);
 }
 
-void VulkanGraphicsPipelineCompiler::add_shader(VkShaderModule shader, VkShaderStageFlagBits stage)
+void GraphicsPipelineCompiler::add_shader(VkShaderModule shader, VkShaderStageFlagBits stage)
 {
     VkPipelineShaderStageCreateInfo shader_stage = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -51,7 +51,7 @@ void VulkanGraphicsPipelineCompiler::add_shader(VkShaderModule shader, VkShaderS
     m_shader_stages.push_back(shader_stage);
 }
 
-VulkanGraphicsPipeline VulkanGraphicsPipelineCompiler::compile(const VulkanContext& context)
+VulkanGraphicsPipeline GraphicsPipelineCompiler::compile(const VulkanContext& context)
 {
     VkPipelineInputAssemblyStateCreateInfo input_assembler = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,

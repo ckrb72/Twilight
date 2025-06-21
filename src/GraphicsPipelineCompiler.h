@@ -3,7 +3,7 @@
 #include <vector>
 #include "vulkan_backend.h"
 
-class VulkanGraphicsPipelineCompiler
+class GraphicsPipelineCompiler
 {
     private:
         VkPipelineLayout m_layout;
@@ -12,8 +12,8 @@ class VulkanGraphicsPipelineCompiler
         std::vector<VkPipelineShaderStageCreateInfo> m_shader_stages;
 
     public:
-        VulkanGraphicsPipelineCompiler();
-        ~VulkanGraphicsPipelineCompiler();
+        GraphicsPipelineCompiler();
+        ~GraphicsPipelineCompiler();
 
         void set_layout(VkPipelineLayout layout);
         void add_binding(uint32_t binding_index, uint32_t stride, VkVertexInputRate rate);
