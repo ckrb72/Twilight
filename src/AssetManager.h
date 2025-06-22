@@ -28,6 +28,7 @@ struct SceneNode
 {
     std::vector<Mesh> meshes;
     std::vector<SceneNode> children;
+    glm::mat4 local_transform;
 };
 
 class AssetManager
@@ -40,7 +41,8 @@ class AssetManager
         SceneNode load_node(aiNode* node, const aiScene* scene);
         void load_vertices(const aiMesh* mesh, std::vector<Vertex>& vertices);
         void load_indices(const aiMesh* mesh, std::vector<unsigned int>& indices);
-        void load_material(const aiMesh* mesh, const aiScene* scene);
+        void load_materials(const aiScene* scene);
+        glm::mat4 mat4x4_assimp_to_glm(const aiMatrix4x4& mat);
 
     public:
         AssetManager();

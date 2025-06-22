@@ -19,6 +19,13 @@
 
 #define FLIGHT_COUNT 2
 
+struct VulkanBuffer
+{
+    VkBuffer handle;
+    VmaAllocation allocation;
+    VmaAllocationInfo info;
+};
+
 struct VulkanSwapchain
 {
     VkFormat format;
@@ -32,6 +39,7 @@ struct VulkanFrameContext
 {
     VkCommandBuffer cmd;
     DescriptorAllocator descriptor_allocator;
+    VulkanBuffer staging_buffer;
     uint32_t swapchain_index;
 };
 
@@ -65,13 +73,6 @@ struct VulkanContext
     };
 
     VulkanQueue graphics_queue;
-};
-
-struct VulkanBuffer
-{
-    VkBuffer handle;
-    VmaAllocation allocation;
-    VmaAllocationInfo info;
 };
 
 struct VulkanImageTransitionInfo

@@ -100,6 +100,7 @@ VulkanContext init_vulkan(void* win, uint32_t width, uint32_t height)
         };
 
         context.frame_context[i].descriptor_allocator.init_pool(context.device);
+        context.frame_context[i].staging_buffer = vulkan_create_buffer(context, 1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
         VK_CHECK(vkAllocateCommandBuffers(context.device, &cmd_buf_info, &context.frame_context[i].cmd));
         VK_CHECK(vkCreateSemaphore(context.device, &semaphore_info, nullptr, &context.frame_data[i].swapchain_semaphore));
         VK_CHECK(vkCreateSemaphore(context.device, &semaphore_info, nullptr, &context.frame_data[i].render_semaphore));
@@ -133,6 +134,7 @@ void destroy_vulkan(VulkanContext& context)
     for(int i = 0; i < FLIGHT_COUNT; i++)
     {
         context.frame_context[i].descriptor_allocator.destroy_pool(context.device);
+        vulkan_destroy_buffer(context, context.frame_context[i].staging_buffer);
         vkDestroyCommandPool(context.device, context.frame_data[i].cmd_pool, nullptr);
         vkDestroySemaphore(context.device, context.frame_data[i].render_semaphore, nullptr);
         vkDestroySemaphore(context.device, context.frame_data[i].swapchain_semaphore, nullptr);

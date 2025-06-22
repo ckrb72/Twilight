@@ -33,10 +33,17 @@ SceneNode AssetManager::load_model(const std::string& path)
 
     // Maybe just save all materials in some "global" array that is a private member of the AssetManager
     // Probably actually want to save the materials (or at least a pointer of them) in the Renderer class
-    /*std::vector<Material> materials =  load_materials(scene); */
+    
+        /*std::vector<Material> materials =*/  load_materials(scene); 
+    /*   
+        for(const Material& material : materials)
+        {
+            renderer.register_material(material);
+        }
+    */
 
-    // load_lights()
-    // load_cameras()
+    // load_lights();
+    // load_cameras();
 
     SceneNode root = load_node(scene->mRootNode, scene);
 
@@ -83,6 +90,7 @@ SceneNode AssetManager::load_node(aiNode* node, const aiScene* scene)
     {
         scene_node.children.push_back(load_node(node->mChildren[child_idx], scene));
     }
+    scene_node.local_transform = mat4x4_assimp_to_glm(node->mTransformation);
 
     return scene_node;
 }
@@ -129,19 +137,47 @@ void AssetManager::load_indices(const aiMesh* mesh, std::vector<unsigned int>& o
 }
 
 // Probably want to do this at a scene level rather than per mesh (so only take in the scene and just load all materials when loading scene. Then just save the material index for each mesh)
-void AssetManager::load_material(const aiMesh* mesh, const aiScene* scene)
+void AssetManager::load_materials(const aiScene* scene)
 {
-    aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-    //std::cout << "Material Name: " << material->GetName().C_Str() << std::endl;
-
-    for(int i = 0; i < material->mNumProperties; i++)
+    /* 
+        std::vector<Material> materials;
+        materials.reserve(scene->mNumMaterials);
+    */
+    for(int mat_index = 0; mat_index < scene->mNumMaterials; mat_index++)
     {
-        aiMaterialProperty* property = material->mProperties[i];
-        //std::cout << property->mKey.C_Str() << std::endl;
-        // Parse Data and Stuff...
-        if(property->mType == aiPTI_Float)
-        {
+        aiMaterial* material = scene->mMaterials[mat_index];
+        
+        // Process material and stuff...
 
+        aiString material_name;
+        material->Get(AI_MATKEY_NAME, material_name);
+
+        aiColor4D base_color;
+        material->Get(AI_MATKEY_COLOR_DIFFUSE, base_color);
+        if(material->GetTextureCount(aiTextureType_DIFFUSE) > 0)
+        {
+            aiString tex_path;
+            material->GetTexture(aiTextureType_DIFFUSE, 0, &tex_path);
+            const aiTexture* tex = scene->GetEmbeddedTexture(tex_path.C_Str());
+            std::cout << tex->mFilename.C_Str() << std::endl;
+        }
+
+        /* materials.push_back(material); */
+    }
+
+    /* return materials; */
+}
+
+glm::mat4 AssetManager::mat4x4_assimp_to_glm(const aiMatrix4x4& mat)
+{
+    // Transpose assimp matrix
+    glm::mat4 out_mat;
+    for(int r = 0; r < 4; r++)
+    {
+        for(int c = 0; c < 4; c++)
+        {
+            out_mat[r][c] = mat[c][r];
         }
     }
+    return out_mat;
 }
