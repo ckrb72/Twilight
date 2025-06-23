@@ -91,6 +91,10 @@ int main()
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     GLFWwindow* window = glfwCreateWindow(WIN_WIDTH, WIN_HEIGHT, "Graphic Demo", nullptr, nullptr);
 
+    Twilight::Render::Renderer renderer;
+    renderer.init(window, WIN_WIDTH, WIN_HEIGHT);
+
+    renderer.deinit();
 
     VulkanContext context = init_vulkan(window, WIN_WIDTH, WIN_HEIGHT);
     assert(validate_vulkan(context));
@@ -483,6 +487,8 @@ int main()
     free_node(context, cube_model);
 
     ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
     vkDestroyDescriptorPool(context.device, imgui_pool, nullptr);
     vkDestroyDescriptorSetLayout(context.device, global_layout, nullptr);
     vulkan_destroy_buffer(context, global_ubo);
