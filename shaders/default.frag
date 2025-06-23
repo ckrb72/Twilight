@@ -8,6 +8,22 @@ layout(location = 0) out vec4 out_color;
 
 layout(set = 1, binding = 0) uniform sampler2D tex;
 
+/*layout(set = 2, binding = 0) uniform lights
+{
+    // light stuff
+    int light_count;
+    Light lights[];     // use this to add up light on an object
+}lights;
+*/
+
+/*layout(set = 2, binding = 0) uniform material
+{
+    // Constants and stuff
+}material;
+
+layout(set = 2, binding = 1) sampler2D diffuse;
+layout(set = 2, binding = 2) sampler2D specular;*/
+
 vec3 light_pos = vec3(1.0, 1.0, 1.0);
 vec3 light_color = vec3(1.0, 1.0, 1.0);
 

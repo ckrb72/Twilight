@@ -12,19 +12,13 @@ DescriptorAllocator::~DescriptorAllocator()
 
 }
 
-void DescriptorAllocator::init_pool(VkDevice device)
+void DescriptorAllocator::init_pools(VkDevice device, uint32_t pool_size, std::vector<VkDescriptorPoolSize> descriptor_types)
 {
-    VkDescriptorPoolSize pool_sizes[] = 
-    {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 5},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5}
-    };
-
     VkDescriptorPoolCreateInfo info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .maxSets = 10,
-        .poolSizeCount = 2,
-        .pPoolSizes = pool_sizes
+        .maxSets = pool_size,
+        .poolSizeCount = static_cast<uint32_t>(descriptor_types.size()),
+        .pPoolSizes = descriptor_types.data()
     };
 
     VK_CHECK(vkCreateDescriptorPool(device, &info, nullptr, &current_pool));

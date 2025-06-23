@@ -2,7 +2,7 @@
 
 namespace Twilight
 {
-    namespace Renderer
+    namespace Render
     {
         Renderer::Renderer()
         {
@@ -17,7 +17,7 @@ namespace Twilight
 
         void Renderer::init(GLFWwindow* window, uint32_t width, uint32_t height)
         {
-
+            
         }
 
         void Renderer::deinit()

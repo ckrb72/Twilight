@@ -6,6 +6,7 @@
 
 #include <glm/glm.hpp>
 #include "vulkan_backend.h"
+#include "Material.h"
 
 struct Vertex
 {
@@ -41,7 +42,7 @@ class AssetManager
         SceneNode load_node(aiNode* node, const aiScene* scene);
         void load_vertices(const aiMesh* mesh, std::vector<Vertex>& vertices);
         void load_indices(const aiMesh* mesh, std::vector<unsigned int>& indices);
-        void load_materials(const aiScene* scene);
+        uint32_t load_materials(const aiScene* scene);
         glm::mat4 mat4x4_assimp_to_glm(const aiMatrix4x4& mat);
 
     public:

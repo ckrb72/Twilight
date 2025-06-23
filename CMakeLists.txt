@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-project(vk-renderer)
+project(Twilight)
 set(CMAKE_CXX_STANDARD 20)
 
 set(SOURCE_DIR "${CMAKE_SOURCE_DIR}/src")
@@ -16,7 +16,7 @@ set(GLM_BUILD_TESTS OFF CACHE BOOL "No glm tests")
 
 add_subdirectory(vendor/glfw)
 add_subdirectory(vendor/vk-bootstrap)
-add_subdirectory(fastgltf)
+#add_subdirectory(fastgltf)
 add_subdirectory(vendor/assimp)
 add_subdirectory(glm)
 add_compile_options(-Wno-nullability-completeness)
@@ -29,5 +29,5 @@ if(NOT Vulkan_LIBRARIES)
     message(FATAL_ERROR "Vulkan not found")
 endif()
 
-add_executable(renderer ${SRC_CXX_FILES})
-target_link_libraries(renderer Vulkan::Vulkan glfw vk-bootstrap::vk-bootstrap assimp glm::glm-header-only)
+add_executable(twilight ${SRC_CXX_FILES})
+target_link_libraries(twilight Vulkan::Vulkan glfw vk-bootstrap::vk-bootstrap assimp glm::glm-header-only)

@@ -20,5 +20,5 @@ class GraphicsPipelineCompiler
         void add_attribute(uint32_t binding, uint32_t location, uint32_t offset, VkFormat format);
         void add_shader(VkShaderModule shader, VkShaderStageFlagBits stage); 
 
-        VulkanGraphicsPipeline compile(const VulkanContext& context);
+        GraphicsPipeline compile(const VulkanContext& context);
 };

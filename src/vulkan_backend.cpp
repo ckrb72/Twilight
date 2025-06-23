@@ -99,7 +99,7 @@ VulkanContext init_vulkan(void* win, uint32_t width, uint32_t height)
             .commandBufferCount = 1
         };
 
-        context.frame_context[i].descriptor_allocator.init_pool(context.device);
+        context.frame_context[i].descriptor_allocator.init_pools(context.device, 20, { {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10}});
         context.frame_context[i].staging_buffer = vulkan_create_buffer(context, 1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
         VK_CHECK(vkAllocateCommandBuffers(context.device, &cmd_buf_info, &context.frame_context[i].cmd));
         VK_CHECK(vkCreateSemaphore(context.device, &semaphore_info, nullptr, &context.frame_data[i].swapchain_semaphore));
@@ -283,7 +283,7 @@ VulkanImage vulkan_create_image(const VulkanContext& context, void* data, VkExte
     void* buffer_ptr = data_buffer.info.pMappedData;
     memcpy(buffer_ptr, data, data_size);
 
-    VulkanImage image = vulkan_create_image(context, size, format, usage, mipmapped);
+    VulkanImage image = vulkan_create_image(context, size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT, mipmapped);
 
     vulkan_immediate_begin(context);
 
@@ -445,7 +445,7 @@ void vulkan_cmd_transition_image(VkCommandBuffer cmd, VkImage image, const Vulka
     vkCmdPipelineBarrier2(cmd, &dep_info);
 }
 
-void vulkan_destroy_graphics_pipeline(const VulkanContext& context, VulkanGraphicsPipeline& pipeline)
+void vulkan_destroy_graphics_pipeline(const VulkanContext& context, GraphicsPipeline& pipeline)
 {
     vkDestroyPipeline(context.device, pipeline.pipeline, nullptr);
 }

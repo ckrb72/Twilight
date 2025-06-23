@@ -5,10 +5,13 @@
 #include <iostream>
 #include "vulkan_backend.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 AssetManager::AssetManager()
 :importer(), renderer()
 {
-
+    stbi_set_flip_vertically_on_load(true);
 }
 
 AssetManager::~AssetManager()
@@ -23,6 +26,9 @@ void AssetManager::init(VulkanContext* context)
 
 SceneNode AssetManager::load_model(const std::string& path)
 {
+    // FIXME: hacky way to do this for now
+    assert(renderer != nullptr);
+
     const aiScene* scene = importer.ReadFile(path, aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices);
     
     if(scene == nullptr)
@@ -34,7 +40,7 @@ SceneNode AssetManager::load_model(const std::string& path)
     // Maybe just save all materials in some "global" array that is a private member of the AssetManager
     // Probably actually want to save the materials (or at least a pointer of them) in the Renderer class
     
-        /*std::vector<Material> materials =*/  load_materials(scene); 
+        uint32_t material_offset = load_materials(scene); 
     /*   
         for(const Material& material : materials)
         {
@@ -72,9 +78,6 @@ SceneNode AssetManager::load_node(aiNode* node, const aiScene* scene)
         {
             load_indices(mesh, indices);
         }
-
-        // FIXME: hacky way to do this for now
-        assert(renderer != nullptr);
 
         Mesh node_mesh = {
             .vertices = vulkan_create_buffer(*renderer, vertices.size() * sizeof(Vertex), vertices.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT),
@@ -136,36 +139,50 @@ void AssetManager::load_indices(const aiMesh* mesh, std::vector<unsigned int>& o
     }
 }
 
-// Probably want to do this at a scene level rather than per mesh (so only take in the scene and just load all materials when loading scene. Then just save the material index for each mesh)
-void AssetManager::load_materials(const aiScene* scene)
+// Loads materials from a given scene. The materials are referenced by meshes via their material index (i.e. mesh0 might have material at index 0 and mesh1 might have material at index 2)
+// returns the offset in the renderer's global material list. Add offset to the loaded mesh's material index to get the global index
+// i.e. If mesh0 has a material index of 2 and load_materials returns 3 then the global offset (the number that should be stored in the mesh's material_index member) should be 5
+uint32_t AssetManager::load_materials(const aiScene* scene)
 {
-    /* 
-        std::vector<Material> materials;
-        materials.reserve(scene->mNumMaterials);
-    */
+    std::vector<Material> materials;
+    materials.reserve(scene->mNumMaterials);
+    std::cout << scene->mNumMaterials << std::endl;
     for(int mat_index = 0; mat_index < scene->mNumMaterials; mat_index++)
     {
         aiMaterial* material = scene->mMaterials[mat_index];
         
-        // Process material and stuff...
+        aiString tex_path;
+        material->GetTexture(aiTextureType_DIFFUSE, 0, &tex_path);
+        const aiTexture* texture = scene->GetEmbeddedTexture(tex_path.C_Str());
+        assert(texture != nullptr);
 
-        aiString material_name;
-        material->Get(AI_MATKEY_NAME, material_name);
+        int width, height;
+        unsigned char* image_data = stbi_load_from_memory((unsigned char*)texture->pcData, texture->mWidth, &width, &height, nullptr, 4);
 
-        aiColor4D base_color;
-        material->Get(AI_MATKEY_COLOR_DIFFUSE, base_color);
-        if(material->GetTextureCount(aiTextureType_DIFFUSE) > 0)
-        {
-            aiString tex_path;
-            material->GetTexture(aiTextureType_DIFFUSE, 0, &tex_path);
-            const aiTexture* tex = scene->GetEmbeddedTexture(tex_path.C_Str());
-            std::cout << tex->mFilename.C_Str() << std::endl;
-        }
+        /*
+            In renderer:
+                create_descriptor_layout()
 
-        /* materials.push_back(material); */
+                create_pipeline_if_needed()
+
+                allocate_descriptor()
+
+                allocate_resources()
+
+                update_descriptor()
+
+                add_material_to_vector_or_something()
+        */
+
+        // Temporary
+        VulkanImage image = vulkan_create_image(*renderer, (void*)image_data, VkExtent3D{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT, false);
+
+        vulkan_destroy_image(*renderer, image);
+
+        stbi_image_free(image_data);
     }
 
-    /* return materials; */
+    return 0;
 }
 
 glm::mat4 AssetManager::mat4x4_assimp_to_glm(const aiMatrix4x4& mat)

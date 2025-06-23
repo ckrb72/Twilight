@@ -51,7 +51,7 @@ void GraphicsPipelineCompiler::add_shader(VkShaderModule shader, VkShaderStageFl
     m_shader_stages.push_back(shader_stage);
 }
 
-VulkanGraphicsPipeline GraphicsPipelineCompiler::compile(const VulkanContext& context)
+GraphicsPipeline GraphicsPipelineCompiler::compile(const VulkanContext& context)
 {
     VkPipelineInputAssemblyStateCreateInfo input_assembler = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,

@@ -91,6 +91,7 @@ int main()
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     GLFWwindow* window = glfwCreateWindow(WIN_WIDTH, WIN_HEIGHT, "Graphic Demo", nullptr, nullptr);
 
+
     VulkanContext context = init_vulkan(window, WIN_WIDTH, WIN_HEIGHT);
     assert(validate_vulkan(context));
 
@@ -166,7 +167,7 @@ int main()
     }
 
     DescriptorAllocator descriptor_allocator;
-    descriptor_allocator.init_pool(context.device);
+    descriptor_allocator.init_pools(context.device, 20, { {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10}});
     VkDescriptorSet global_set = descriptor_allocator.allocate(context.device, global_layout);
 
     VkPushConstantRange push_constant = {
@@ -187,7 +188,7 @@ int main()
     VkPipelineLayout pipeline_layout;
     VK_CHECK(vkCreatePipelineLayout(context.device, &pipeline_layout_info, nullptr, &pipeline_layout));
 
-    VulkanGraphicsPipeline graphics_pipeline;
+    GraphicsPipeline graphics_pipeline;
     {
         VkShaderModule vertex_shader;
         vulkan_load_shader_module("../shaders/default.vert.spv", context.device, &vertex_shader);
@@ -246,7 +247,7 @@ int main()
 
     AssetManager asset_manager;
     asset_manager.init(&context);
-    SceneNode cube_model = asset_manager.load_model("../little-guy.glb");
+    SceneNode cube_model = asset_manager.load_model("../DamagedHelmet.glb");
 
     double previous_time = glfwGetTime();
     double previous_x, previous_y;
