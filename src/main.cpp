@@ -250,7 +250,7 @@ int main()
     VulkanBuffer global_ubo = vulkan_create_buffer(context, sizeof(global_descriptors), &global_descriptors, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 
     AssetManager asset_manager;
-    asset_manager.init(&context);
+    asset_manager.init(&renderer, &context);
     SceneNode cube_model = asset_manager.load_model("../little-guy.glb");
 
     double previous_time = glfwGetTime();

@@ -5,10 +5,19 @@
 #include "vma.h"
 #include "twilight_types.h"
 
+#define FRAME_FLIGHT_COUNT 2
+
 namespace Twilight
 {
     namespace Render
     {
+
+        struct FrameData
+        {
+            VkCommandBuffer cmd;
+            uint32_t swapchain_index;
+        };
+
         class Renderer
         {
             private:
@@ -40,6 +49,17 @@ namespace Twilight
                 Queue graphics_queue;
                 Queue transfer_queue;
 
+                struct InternalFrameData
+                {
+                    VkCommandPool pool;
+                    VkFence render_fence;
+                    VkSemaphore render_semaphore, swapchain_semaphore;
+                };
+
+                FrameData frames[FRAME_FLIGHT_COUNT];
+                InternalFrameData frames_intl[FRAME_FLIGHT_COUNT];
+                uint32_t frame_count = 0;
+
                 DescriptorAllocator general_set_allocator;
                 DescriptorAllocator material_set_allocator;
                 /*std::vector<DescriptorAllocator> material_set_allocators;*/       // Have a separate allocator per material type (i.e. PBR has it's own allocator, PHONG has an allocator, and so on)
@@ -50,12 +70,15 @@ namespace Twilight
                 // Temporary
                 VkDescriptorSetLayout phong_material_layout;
                 VkDescriptorSetLayout global_layout;
-
                 GraphicsPipeline phong_pipeline;
+                // End Temporary
 
                 VkCommandPool transfer_pool;
                 VkCommandBuffer transfer_cmd;
                 VkFence transfer_fence;
+
+                std::vector<Buffer> buffers;
+                std::vector<Image> images;
 
                 
 
@@ -72,10 +95,14 @@ namespace Twilight
                 ~Renderer();
 
                 void init(GLFWwindow* window, uint32_t width, uint32_t height);
-                void load_material();
-                //void draw_node(const SceneNode& node);
+                void load_material(std::vector<MaterialTextureBinding> texture_bindings);
+                Buffer create_buffer(void* data, uint64_t size, VkBufferUsageFlags usage);
+                void draw_node(const SceneNode& node);
                 void present();
                 void deinit();
+
+                /* Temporary */
+                FrameData start_render();
         };
     }
 }

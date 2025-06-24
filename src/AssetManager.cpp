@@ -9,7 +9,7 @@
 #include "stb_image.h"
 
 AssetManager::AssetManager()
-:importer(), renderer()
+:importer(), temp_renderer()
 {
     stbi_set_flip_vertically_on_load(true);
 }
@@ -19,15 +19,16 @@ AssetManager::~AssetManager()
 
 }
 
-void AssetManager::init(VulkanContext* context)
+void AssetManager::init(Twilight::Render::Renderer* renderer, VulkanContext* context)
 {
-    this->renderer = context;
+    this->renderer = renderer;
+    this->temp_renderer = context;
 }
 
 SceneNode AssetManager::load_model(const std::string& path)
 {
     // FIXME: hacky way to do this for now
-    assert(renderer != nullptr);
+    assert(temp_renderer != nullptr);
 
     const aiScene* scene = importer.ReadFile(path, aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices);
     
@@ -80,8 +81,8 @@ SceneNode AssetManager::load_node(aiNode* node, const aiScene* scene)
         }
 
         Mesh node_mesh = {
-            .vertices = vulkan_create_buffer(*renderer, vertices.size() * sizeof(Vertex), vertices.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT),
-            .indices = vulkan_create_buffer(*renderer, indices.size() * sizeof(unsigned int), indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
+            .vertices = vulkan_create_buffer(*temp_renderer, vertices.size() * sizeof(Vertex), vertices.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT),
+            .indices = vulkan_create_buffer(*temp_renderer, indices.size() * sizeof(unsigned int), indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
             .index_count = static_cast<uint32_t>(indices.size()),
             .material_index = mesh->mMaterialIndex  /* Will probably need to change this up depending on how I store materials in the AssetManager*/
         };
@@ -144,42 +145,25 @@ void AssetManager::load_indices(const aiMesh* mesh, std::vector<unsigned int>& o
 // i.e. If mesh0 has a material index of 2 and load_materials returns 3 then the global offset (the number that should be stored in the mesh's material_index member) should be 5
 uint32_t AssetManager::load_materials(const aiScene* scene)
 {
-    std::vector<Material> materials;
-    materials.reserve(scene->mNumMaterials);
-    std::cout << scene->mNumMaterials << std::endl;
+    std::cout << "Material Count: " << scene->mNumMaterials << std::endl;
     for(int mat_index = 0; mat_index < scene->mNumMaterials; mat_index++)
     {
-        /*aiMaterial* material = scene->mMaterials[mat_index];
+        aiMaterial* material = scene->mMaterials[mat_index];
         
+        std::cout << "Diffuse: " << material->GetTextureCount(aiTextureType_DIFFUSE) << std::endl;
+
         aiString tex_path;
         material->GetTexture(aiTextureType_DIFFUSE, 0, &tex_path);
         const aiTexture* texture = scene->GetEmbeddedTexture(tex_path.C_Str());
-        assert(texture != nullptr);
+        if(texture != nullptr)
+        {
+            int width, height;
+            unsigned char* image_data = stbi_load_from_memory((unsigned char*)texture->pcData, texture->mWidth, &width, &height, nullptr, 4);
 
-        int width, height;
-        unsigned char* image_data = stbi_load_from_memory((unsigned char*)texture->pcData, texture->mWidth, &width, &height, nullptr, 4);*/
+            //renderer->load_material({{image_data, static_cast<uint32_t>(width), static_cast<uint32_t>(height), Twilight::Render::MaterialTextureType::DIFFUSE}});
 
-        /*
-            In renderer:
-                create_descriptor_layout() at startup for each type of material we want (maybe lazily make)
-
-                create_pipeline_if_needed() at startup for each type of material we want (maybe lazily make)
-
-                allocate_descriptor()
-
-                allocate_resources()
-
-                update_descriptor()
-
-                add_material_to_vector_or_something()
-        */
-
-        // Temporary
-        /*VulkanImage image = vulkan_create_image(*renderer, (void*)image_data, VkExtent3D{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT, false);
-
-        vulkan_destroy_image(*renderer, image);
-
-        stbi_image_free(image_data);*/
+            stbi_image_free(image_data);
+        }
     }
 
     return 0;

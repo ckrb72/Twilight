@@ -1,5 +1,7 @@
 #pragma once
+#include <vector>
 #include <vulkan/vulkan.h>
+#include <glm/glm.hpp>
 #include "vma.h"
 
 namespace Twilight
@@ -19,13 +21,6 @@ namespace Twilight
             VmaAllocationInfo info;
         };
 
-        struct Material
-        {
-            GraphicsPipeline* pipeline;
-            VkDescriptorSet descriptor_set;
-            Buffer descriptor_buffer;     // This will be uploaded with all the data needed at startup / when the material is loaded from disk
-        };
-
         struct Image
         {
             VkImage handle;
@@ -34,6 +29,50 @@ namespace Twilight
             VmaAllocationInfo info;
             VkFormat format;
             uint32_t width, height, depth;
+        };
+
+        struct Material
+        {
+            GraphicsPipeline* pipeline;
+            VkDescriptorSet descriptor_set;
+            Buffer descriptor_buffer;     // This will be uploaded with all the data needed at startup / when the material is loaded from disk
+        };
+
+        enum MaterialTextureType : uint8_t
+        {
+            DIFFUSE,
+            NORMAL,
+            METALLIC,
+            AMBIENT_OCCLUSION,
+        };
+
+        struct MaterialTextureBinding
+        {
+            void* data;
+            uint32_t width, height;
+            MaterialTextureType type;
+        };
+
+        struct Vertex
+        {
+            glm::vec3 pos;
+            glm::vec3 norm;
+            glm::vec2 tex;
+        };
+
+        struct Mesh
+        {
+            Buffer vertices;
+            Buffer indices;
+            uint32_t index_count;
+            uint32_t material_index;
+        };
+        
+        struct SceneNode
+        {
+            std::vector<Mesh> meshes;
+            std::vector<SceneNode> children;
+            glm::mat4 local_transform;
         };
     }
 }

@@ -6,7 +6,8 @@
 
 #include <glm/glm.hpp>
 #include "vulkan_backend.h"
-#include "Material.h"
+#include "twilight_types.h"
+#include "Renderer.h"
 
 struct Vertex
 {
@@ -36,8 +37,9 @@ class AssetManager
 {
     private:
         Assimp::Importer importer;
-        VulkanContext* renderer = nullptr;      /* later on when we have a renderer class change this to a pointer to the actual renderer (i.e. const Renderer::Renderer)
+        VulkanContext* temp_renderer = nullptr;      /* later on when we have a renderer class change this to a pointer to the actual renderer (i.e. const Renderer::Renderer)
                                                    Then in the load_model function instead of calling vulkan_create_buffer directly just call renderer.create_buffer(data, ...); */
+        Twilight::Render::Renderer* renderer = nullptr;
 
         SceneNode load_node(aiNode* node, const aiScene* scene);
         void load_vertices(const aiMesh* mesh, std::vector<Vertex>& vertices);
@@ -48,6 +50,6 @@ class AssetManager
     public:
         AssetManager();
         ~AssetManager();
-        void init(VulkanContext* context);
+        void init(Twilight::Render::Renderer* renderer, VulkanContext* context);
         SceneNode load_model(const std::string& path);
 };

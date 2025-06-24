@@ -167,7 +167,7 @@ namespace Twilight
             // FIXME: Temporary transfer queue test
             uint8_t data[4] = { 255, 255, 255, 255 };
 
-            Image test_image = create_image(device, allocator, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, data, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT);
+            Image test_image = Vulkan::create_image(device, allocator, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, data, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT);
 
             vkDestroyImageView(this->device, test_image.view, nullptr);
             vmaDestroyImage(this->allocator, test_image.handle, test_image.allocation);
@@ -175,6 +175,7 @@ namespace Twilight
 
         void Renderer::deinit()
         {
+            vkDeviceWaitIdle(this->device);
             vkDestroyFence(this->device, this->transfer_fence, nullptr);
             vkDestroyCommandPool(this->device, this->transfer_pool, nullptr);
             vkDestroyDescriptorSetLayout(this->device, this->phong_material_layout, nullptr);
@@ -246,6 +247,41 @@ namespace Twilight
                 .handle = device.get_queue(vkb::QueueType::transfer).value(),
                 .family = device.get_queue_index(vkb::QueueType::transfer).value()
             };
+
+            // Sync objects and command pool
+            {
+                VkSemaphoreCreateInfo semaphore_info = {
+                    .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
+                };
+
+                VkFenceCreateInfo fence_info = {
+                    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+                    .flags = VK_FENCE_CREATE_SIGNALED_BIT
+                };
+                
+                VkCommandPoolCreateInfo pool_info = {
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                    .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+                    .queueFamilyIndex = this->graphics_queue.family
+                };
+
+                for(int i = 0; i < FRAME_FLIGHT_COUNT; i++)
+                {
+                    VK_CHECK(vkCreateCommandPool(this->device, &pool_info, nullptr, &this->frames_intl[i].pool));
+
+                    VkCommandBufferAllocateInfo buffer_info = {
+                        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                        .commandPool = this->frames_intl[i].pool,
+                        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                        .commandBufferCount = 1
+                    };
+
+                    VK_CHECK(vkAllocateCommandBuffers(this->device, &buffer_info, &this->frames[i].cmd));
+                    VK_CHECK(vkCreateSemaphore(this->device, &semaphore_info, nullptr, &this->frames_intl[i].swapchain_semaphore));
+                    VK_CHECK(vkCreateSemaphore(this->device, &semaphore_info, nullptr, &this->frames_intl[i].render_semaphore));
+                    VK_CHECK(vkCreateFence(this->device, &fence_info, nullptr, &this->frames_intl[i].render_fence));
+                }
+            }
         }
 
         void Renderer::create_swapchain(uint32_t width, uint32_t height)
@@ -340,6 +376,15 @@ namespace Twilight
 
         void Renderer::deinit_vulkan()
         {
+
+            for(int i = 0; i < FRAME_FLIGHT_COUNT; i++)
+            {
+                vkDestroyCommandPool(this->device, this->frames_intl[i].pool, nullptr);
+                vkDestroySemaphore(this->device, this->frames_intl[i].render_semaphore, nullptr);
+                vkDestroySemaphore(this->device, this->frames_intl[i].swapchain_semaphore, nullptr);
+                vkDestroyFence(this->device, this->frames_intl[i].render_fence, nullptr);
+            }
+
             vmaDestroyAllocator(this->allocator);
             vkDestroyDevice(this->device, nullptr);
             vkb::destroy_debug_utils_messenger(this->instance, this->debug_messenger);
@@ -356,13 +401,141 @@ namespace Twilight
         }
 
 
-        void Renderer::load_material()
+        void Renderer::load_material(std::vector<MaterialTextureBinding> texture_bindings)
         {
+
+            /*
+                create_descriptor_layout() at startup for each type of material we want (maybe lazily make)
+
+                create_pipeline_if_needed() at startup for each type of material we want (maybe lazily make)
+
+                allocate_descriptor()
+
+                allocate_resources()
+
+                update_descriptor()
+
+                add_material_to_vector_or_something()
+            */
+           
             VkDescriptorSet mat_set = material_set_allocator.allocate(this->device, this->phong_material_layout);
 
-            
+            if(texture_bindings.size() < 1 && texture_bindings[0].type != MaterialTextureType::DIFFUSE)
+            {
+                std::cout << "TEST: first texture was not a diffuse" << std::endl;
+                return;
+            }
+
+            assert(texture_bindings[0].data != nullptr);
+
+            Image diffuse_texture = Vulkan::create_image(this->device, this->allocator, VkExtent3D{texture_bindings[0].width, texture_bindings[0].height, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT);
+
+
 
         }
 
+        // For now this will directly call the render commands and stuff
+        // But when the renderer is done this will actually just sort the nodes based on the material and then add them to a queue to draw
+        // Then they will actually be draw in the present method
+        void Renderer::draw_node(const SceneNode& node)
+        {
+
+        }
+
+        void Renderer::present()
+        {
+            InternalFrameData* internal_data = &this->frames_intl[this->frame_count];
+            FrameData* frame = &this->frames[this->frame_count];
+
+            // Start command buffer
+
+            // Render all stuff that was submitted to renderer
+
+            // Then do the rest
+            VK_CHECK(vkEndCommandBuffer(frame->cmd));
+
+            // Submit the commands to the command buffer
+            VkCommandBufferSubmitInfo cmd_submit_info = {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+                .commandBuffer = frame->cmd,
+                .deviceMask = 0
+            };
+
+            VkSemaphoreSubmitInfo wait_info = {
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .semaphore = internal_data->swapchain_semaphore,
+                .value = 1,
+                .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR,
+                .deviceIndex = 0
+            };
+
+            VkSemaphoreSubmitInfo signal_info = {
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .semaphore = internal_data->render_semaphore,
+                .value = 1,
+                .stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT_KHR,
+                .deviceIndex = 0
+            };
+
+            VkSubmitInfo2 submit_info = {
+                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+                .waitSemaphoreInfoCount = 1,
+                .pWaitSemaphoreInfos = &wait_info,
+                .commandBufferInfoCount = 1,
+                .pCommandBufferInfos = &cmd_submit_info,
+                .signalSemaphoreInfoCount = 1,
+                .pSignalSemaphoreInfos = &signal_info
+            };
+
+            // Submits commands to queue and sets fence to signal when done
+            VK_CHECK(vkQueueSubmit2(this->graphics_queue.handle, 1, &submit_info, internal_data->render_fence));
+
+            VkPresentInfoKHR present_info = {
+                .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+                .waitSemaphoreCount = 1,
+                .pWaitSemaphores = &internal_data->render_semaphore,
+                .swapchainCount = 1,
+                .pSwapchains = &this->swapchain.handle,
+                .pImageIndices = &frame->swapchain_index
+            };
+
+            VK_CHECK(vkQueuePresentKHR(this->graphics_queue.handle, &present_info));
+            this->frame_count += (this->frame_count + 1) % FRAME_FLIGHT_COUNT;
+        }
+
+        // Temporary
+        FrameData Renderer::start_render()
+        {
+            const InternalFrameData* frame_data = &this->frames_intl[this->frame_count];
+            FrameData* frame_context = &this->frames[this->frame_count];
+
+            // Wait for fence to be signaled (if first loop fence is already signaled)
+            VK_CHECK(vkWaitForFences(this->device, 1, &frame_data->render_fence, true, UINT64_MAX));
+            // Here Fence is signaled
+
+            // Reset Fence to unsignaled
+            VK_CHECK(vkResetFences(this->device, 1, &frame_data->render_fence));
+
+            // Acquire swapchain image. Swapchain_semaphore will be signaled once it has been acquired
+            VK_CHECK(vkAcquireNextImageKHR(this->device, this->swapchain.handle, UINT64_MAX, frame_data->swapchain_semaphore, nullptr, &frame_context->swapchain_index));
+
+
+            VK_CHECK(vkResetCommandBuffer(frame_context->cmd, 0));
+
+            VkCommandBufferBeginInfo cmd_info = {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+            };
+
+            VK_CHECK(vkBeginCommandBuffer(frame_context->cmd, &cmd_info));
+
+            return *frame_context;
+        }
+
+        Buffer Renderer::create_buffer(void* data, uint64_t size, VkBufferUsageFlags usage)
+        {
+            Buffer buffer = Vulkan::create_buffer(this->device, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, this->allocator, data, size, usage);
+            return buffer;
+        }
     }
 }
