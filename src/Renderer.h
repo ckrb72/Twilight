@@ -71,6 +71,7 @@ namespace Twilight
                 VkDescriptorSetLayout phong_material_layout;
                 VkDescriptorSetLayout global_layout;
                 GraphicsPipeline phong_pipeline;
+                Image depth_buffer;
                 // End Temporary
 
                 VkCommandPool transfer_pool;
@@ -89,15 +90,24 @@ namespace Twilight
                 void create_swapchain(uint32_t width, uint32_t height);
                 void destroy_swapchain();
 
+                void draw_gui();
+
             public:
 
                 Renderer();
                 ~Renderer();
 
                 void init(GLFWwindow* window, uint32_t width, uint32_t height);
-                void load_material(std::vector<MaterialTextureBinding> texture_bindings);
+
                 Buffer create_buffer(void* data, uint64_t size, VkBufferUsageFlags usage);
-                void draw_node(const SceneNode& node);
+                void destroy_buffer(Buffer& buffer);
+                
+                Image create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage);
+                void destroy_image(Image& image);
+                
+                void load_material(std::vector<MaterialTextureBinding> texture_bindings);
+                void draw(const SceneNode& node);
+                void draw(const Buffer& vertex, const Buffer& index, uint32_t index_count);
                 void present();
                 void deinit();
 

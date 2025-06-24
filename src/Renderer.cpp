@@ -164,18 +164,13 @@ namespace Twilight
             }
 
 
-            // FIXME: Temporary transfer queue test
-            uint8_t data[4] = { 255, 255, 255, 255 };
-
-            Image test_image = Vulkan::create_image(device, allocator, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, data, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT);
-
-            vkDestroyImageView(this->device, test_image.view, nullptr);
-            vmaDestroyImage(this->allocator, test_image.handle, test_image.allocation);
+            this->depth_buffer = Vulkan::create_image(this->device, this->allocator, {this->swapchain.extent.width, this->swapchain.extent.height, 1}, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
         }
 
         void Renderer::deinit()
         {
             vkDeviceWaitIdle(this->device);
+            Vulkan::destroy_image(this->device, this->allocator, this->depth_buffer);
             vkDestroyFence(this->device, this->transfer_fence, nullptr);
             vkDestroyCommandPool(this->device, this->transfer_pool, nullptr);
             vkDestroyDescriptorSetLayout(this->device, this->phong_material_layout, nullptr);
@@ -437,9 +432,32 @@ namespace Twilight
         // For now this will directly call the render commands and stuff
         // But when the renderer is done this will actually just sort the nodes based on the material and then add them to a queue to draw
         // Then they will actually be draw in the present method
-        void Renderer::draw_node(const SceneNode& node)
+        void Renderer::draw(const SceneNode& node)
         {
+            VkCommandBuffer cmd = this->frames[this->frame_count].cmd;
+            for(const Mesh& mesh : node.meshes)
+            {
+                // Bind material
 
+                // Bind vertices
+                VkDeviceSize sizes[] = {0};
+                vkCmdBindVertexBuffers(cmd, 0, 1, &mesh.vertices.handle, sizes);
+                vkCmdBindIndexBuffer(cmd, mesh.indices.handle, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(cmd, mesh.index_count, 1, 0, 0, 0);
+            }
+
+            for(const SceneNode& child : node.children)
+            {
+                draw(child);
+            }
+        }
+
+        void Renderer::draw(const Buffer& vertex, const Buffer& index, uint32_t index_count)
+        {
+            VkCommandBuffer cmd = this->frames[this->frame_count].cmd;
+            vkCmdBindVertexBuffers(cmd, 0, 1, &vertex.handle, {});
+            vkCmdBindIndexBuffer(cmd, index.handle, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(cmd, index_count, 1, 0, 0, 0);
         }
 
         void Renderer::present()
@@ -447,9 +465,20 @@ namespace Twilight
             InternalFrameData* internal_data = &this->frames_intl[this->frame_count];
             FrameData* frame = &this->frames[this->frame_count];
 
+            //TODO: Refactor this when ready so start_frame is actually "called" here. In other words, put the start frame code here instead of in it's own function.
+            // When an object is submitted to the renderer to draw, it will be added to a queue that will then get read here and all the necessary things will all be draw in this function.
+            // The draw function doesn't actually "draw" the objects. Instead, it just submits them to be drawn later in this function
+
             // Start command buffer
 
             // Render all stuff that was submitted to renderer
+
+            draw_gui();
+
+            // Transition image to presentable state
+            Vulkan::Cmd::transition_image(frame->cmd, this->swapchain.images[frame->swapchain_index], {VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+                                    VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR}, 
+                                    { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
 
             // Then do the rest
             VK_CHECK(vkEndCommandBuffer(frame->cmd));
@@ -529,13 +558,106 @@ namespace Twilight
 
             VK_CHECK(vkBeginCommandBuffer(frame_context->cmd, &cmd_info));
 
+            // Get swapchain image, transition it to renderable format, start rendering...
+            Vulkan::Cmd::transition_image(frame_context->cmd, this->swapchain.images[frame_context->swapchain_index], {VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+                                    VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+                                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL}, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
+            Vulkan::Cmd::transition_image(frame_context->cmd, this->depth_buffer.handle, {VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, 
+                                    VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT, 
+                                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL}, {VK_IMAGE_ASPECT_DEPTH_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+            
+            {
+                VkRenderingAttachmentInfo color_attachment_info = {
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                    .imageView = this->swapchain.views[frame_context->swapchain_index],
+                    .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                    .clearValue = {
+                        .color = {0.1, 0.1, 0.1, 1.0}
+                    }
+                };
+
+                VkRenderingAttachmentInfo depth_attachment_info = {
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                    .imageView = this->depth_buffer.view,
+                    .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                    .clearValue = {
+                        .depthStencil = {.depth = 1.0f}
+                    }
+                };
+
+                VkRenderingInfo render_info = {
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                    .renderArea = VkRect2D{ {0, 0}, {this->swapchain.extent.width, this->swapchain.extent.height} },
+                    .layerCount = 1,
+                    .colorAttachmentCount = 1,
+                    .pColorAttachments = &color_attachment_info,
+                    .pDepthAttachment = &depth_attachment_info
+                };
+
+                vkCmdBeginRendering(frame_context->cmd, &render_info);
+            }
+            vkCmdEndRendering(frame_context->cmd);
+
             return *frame_context;
         }
 
         Buffer Renderer::create_buffer(void* data, uint64_t size, VkBufferUsageFlags usage)
         {
-            Buffer buffer = Vulkan::create_buffer(this->device, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, this->allocator, data, size, usage);
-            return buffer;
+            return Vulkan::create_buffer(this->device, { this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence }, this->allocator, data, size, usage);
+        }
+
+        void Renderer::destroy_buffer(Buffer& buffer)
+        {
+            Vulkan::destroy_buffer(this->allocator, buffer);
+        }
+        
+        Image Renderer::create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage)
+        {
+            return Vulkan::create_image(this->device, this->allocator, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, data, size, format, usage);
+        }
+
+        void Renderer::destroy_image(Image& image)
+        {
+            Vulkan::destroy_image(this->device, this->allocator, image);
+        }
+
+        void Renderer::draw_gui()
+        {
+
+            // Temporary
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+            ImGui::ShowDemoWindow();
+            ImGui::Render();
+            
+            FrameData* frame = &this->frames[this->frame_count];
+            VkRenderingAttachmentInfo imgui_attachment = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = this->swapchain.views[frame->swapchain_index],
+                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                .clearValue = {
+                    .color = {0.0, 0.0, 0.0, 1.0}
+                }
+            };
+
+            VkRenderingInfo imgui_render_info = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = VkRect2D{ {0, 0}, {this->swapchain.extent.width, this->swapchain.extent.height} },
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &imgui_attachment
+            }; 
+
+            vkCmdBeginRendering(frame->cmd, &imgui_render_info);
+            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), frame->cmd);
+            vkCmdEndRendering(frame->cmd);
         }
     }
 }

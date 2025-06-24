@@ -44,6 +44,14 @@ namespace Twilight
                 return gpu_buffer;
             }
 
+            void destroy_buffer(VmaAllocator allocator, Buffer& buffer)
+            {
+                vmaDestroyBuffer(allocator, buffer.handle, buffer.allocation);
+                buffer.handle = VK_NULL_HANDLE;
+                buffer.allocation = VK_NULL_HANDLE;
+                buffer.info = {};
+            }
+
             Image create_image(VkDevice device, VmaAllocator allocator, VkExtent3D size, VkFormat format, VkImageUsageFlags usage)
             {
                 VkImageCreateInfo image_info = {
@@ -110,7 +118,7 @@ namespace Twilight
                         .new_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                     };
 
-                    cmd_transition_image(info.cmd, image.handle, transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
+                    Cmd::transition_image(info.cmd, image.handle, transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
                 }
 
                 {
@@ -140,7 +148,7 @@ namespace Twilight
                         .new_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                     };
 
-                    cmd_transition_image(info.cmd, image.handle, transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
+                    Cmd::transition_image(info.cmd, image.handle, transition_info, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
                 }
 
                 transfer_end(device, info);
@@ -183,27 +191,41 @@ namespace Twilight
                 VK_CHECK(vkWaitForFences(device, 1, &info.fence, true, UINT64_MAX));
             }
 
-            void cmd_transition_image(VkCommandBuffer cmd, VkImage image, const ImageTransitionInfo& info, VkImageSubresourceRange sub_image)
+            void destroy_image(VkDevice device, VmaAllocator allocator, Image& image)
             {
-                VkImageMemoryBarrier2 image_barrier = {
-                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-                    .srcStageMask = info.src_stage,
-                    .srcAccessMask = info.src_access,
-                    .dstStageMask = info.dst_stage,
-                    .dstAccessMask = info.dst_access,
-                    .oldLayout = info.old_layout,
-                    .newLayout = info.new_layout,
-                    .image = image,
-                    .subresourceRange = sub_image
-                };
+                vkDestroyImageView(device, image.view, nullptr);
+                vmaDestroyImage(allocator, image.handle, image.allocation);
 
-                VkDependencyInfo dep_info = {
-                    .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                    .imageMemoryBarrierCount = 1,
-                    .pImageMemoryBarriers = &image_barrier
-                };
+                image.handle = VK_NULL_HANDLE;
+                image.view = VK_NULL_HANDLE;
+                image.allocation = nullptr;
+                image.info = {};
+            }
 
-                vkCmdPipelineBarrier2(cmd, &dep_info);
+            namespace Cmd
+            {
+                void transition_image(VkCommandBuffer cmd, VkImage image, const ImageTransitionInfo& info, VkImageSubresourceRange sub_image)
+                {
+                    VkImageMemoryBarrier2 image_barrier = {
+                        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                        .srcStageMask = info.src_stage,
+                        .srcAccessMask = info.src_access,
+                        .dstStageMask = info.dst_stage,
+                        .dstAccessMask = info.dst_access,
+                        .oldLayout = info.old_layout,
+                        .newLayout = info.new_layout,
+                        .image = image,
+                        .subresourceRange = sub_image
+                    };
+                
+                    VkDependencyInfo dep_info = {
+                        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                        .imageMemoryBarrierCount = 1,
+                        .pImageMemoryBarriers = &image_barrier
+                    };
+                
+                    vkCmdPipelineBarrier2(cmd, &dep_info);
+                }
             }
         }
     }

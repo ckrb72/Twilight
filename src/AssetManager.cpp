@@ -41,13 +41,7 @@ SceneNode AssetManager::load_model(const std::string& path)
     // Maybe just save all materials in some "global" array that is a private member of the AssetManager
     // Probably actually want to save the materials (or at least a pointer of them) in the Renderer class
     
-        uint32_t material_offset = load_materials(scene); 
-    /*   
-        for(const Material& material : materials)
-        {
-            renderer.register_material(material);
-        }
-    */
+    uint32_t material_offset = load_materials(scene); 
 
     // load_lights();
     // load_cameras();

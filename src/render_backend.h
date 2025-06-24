@@ -28,13 +28,18 @@ namespace Twilight
 
             /* TODO: Make this more efficient with the staging buffer */
             Buffer create_buffer(VkDevice device, const TransferInfo& info, VmaAllocator allocator, void* data, uint64_t size, VkBufferUsageFlags usage);
+            void destroy_buffer(VmaAllocator allocator, Buffer& buffer);
 
             Image create_image(VkDevice device, VmaAllocator allocator, VkExtent3D size, VkFormat format, VkImageUsageFlags usage);
             Image create_image(VkDevice device, VmaAllocator allocator, const TransferInfo& info, void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage);
+            void destroy_image(VkDevice device, VmaAllocator allocator, Image& image);
             void transfer_begin(VkDevice device, const TransferInfo& info);
             void transfer_end(VkDevice device, const TransferInfo& info);
 
-            void cmd_transition_image(VkCommandBuffer cmd, VkImage image, const ImageTransitionInfo& info, VkImageSubresourceRange sub_image);
+            namespace Cmd
+            {
+                void transition_image(VkCommandBuffer cmd, VkImage image, const ImageTransitionInfo& info, VkImageSubresourceRange sub_image);
+            }
         }
     }
 }

@@ -94,6 +94,9 @@ int main()
     Twilight::Render::Renderer renderer;
     renderer.init(window, WIN_WIDTH, WIN_HEIGHT);
 
+    renderer.start_render();
+    renderer.present();
+
     renderer.deinit();
 
     VulkanContext context = init_vulkan(window, WIN_WIDTH, WIN_HEIGHT);
@@ -363,16 +366,15 @@ int main()
             
             vkCmdCopyBuffer(cmd, frame_context.staging_buffer.handle, global_ubo.handle, 1, &copy_info);
         }
-
-        vulkan_cmd_transition_image(cmd, context.swapchain.images[swapchain_index], {VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+        
+        {
+            vulkan_cmd_transition_image(cmd, context.swapchain.images[swapchain_index], {VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
                                     VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
                                     VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL}, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
 
-        vulkan_cmd_transition_image(cmd, depth_image.handle, {VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, 
+            vulkan_cmd_transition_image(cmd, depth_image.handle, {VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, 
                                     VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT, 
                                     VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL}, {VK_IMAGE_ASPECT_DEPTH_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
-        
-        {
             VkRenderingAttachmentInfo color_attachment_info = {
                 .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
                 .imageView = context.swapchain.views[swapchain_index],
