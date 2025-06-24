@@ -1,27 +1,66 @@
 #include "Renderer.h"
 #include <VkBootstrap.h>
-#include <vulkan/vk_enum_string_helper.h>
-#include <iostream>
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_vulkan.h"
 
-#define VK_CHECK(x)                                                     \
-    do {                                                                \
-        VkResult err = x;                                               \
-        if (err) {                                                      \
-            std::cout << #x << std::endl;                               \
-            std::cout << "Detected Vulkan error: " << string_VkResult(err) << std::endl;\
-            std::cout << __FILE__ << " " << __LINE__ << std::endl;      \
-            exit(EXIT_FAILURE);                                                   \
-        }                                                               \
-    } while (0);
+#include "GraphicsPipelineCompiler.h"
+#include "RenderUtil.h"
+#include <fstream>
+
+static bool vulkan_load_shader_module(const char* path, VkDevice device, VkShaderModule* out_module)
+{
+    std::ifstream file(path, std::ios::ate | std::ios::binary);
+    if(!file.is_open())
+    {
+        std::cerr << "Failed to open file: " << path << std::endl;
+        return false;
+    }
+
+    size_t file_size = (size_t)file.tellg();
+    std::vector<uint32_t> buffer(file_size / sizeof(uint32_t));
+    file.seekg(0);
+    file.read((char*)buffer.data(), file_size);
+    file.close();
+
+    VkShaderModuleCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = buffer.size() * sizeof(uint32_t),
+        .pCode = buffer.data()
+    };
+
+    VkShaderModule shader_module;
+    VK_CHECK(vkCreateShaderModule(device, &create_info, nullptr, &shader_module))
+
+    *out_module = shader_module;
+
+    return true;
+}
 
 
 namespace Twilight
 {
     namespace Render
     {
+        static Buffer create_buffer(VmaAllocator allocator, uint64_t size, VkBufferUsageFlags usage, VmaMemoryUsage alloc_usage)
+        {
+            VkBufferCreateInfo buf_info = {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = size,
+                .usage = usage
+            };
+
+            VmaAllocationCreateInfo alloc_info = {
+                .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
+                .usage = alloc_usage
+            };
+
+            Buffer buffer = {};
+            VK_CHECK(vmaCreateBuffer(allocator, &buf_info, &alloc_info, &buffer.handle, &buffer.allocation, &buffer.info));
+    
+            return buffer;
+        }
+
         Renderer::Renderer()
         {
 
@@ -40,10 +79,165 @@ namespace Twilight
             create_swapchain(width, height);
             init_imgui();
             this->material_set_allocator.init_pools(this->device, 20, {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10}});
+
+            {
+                VkCommandPoolCreateInfo pool_info = {
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                    .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+                    .queueFamilyIndex = this->transfer_queue.family
+                };
+
+                VK_CHECK(vkCreateCommandPool(this->device, &pool_info, nullptr, &this->transfer_pool));
+
+                VkCommandBufferAllocateInfo alloc_info = {
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                    .commandPool = this->transfer_pool,
+                    .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                    .commandBufferCount = 1
+                };
+
+                VK_CHECK(vkAllocateCommandBuffers(this->device, &alloc_info, &this->transfer_cmd));
+
+                VkFenceCreateInfo fence_info = {
+                    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+                    .flags = VK_FENCE_CREATE_SIGNALED_BIT
+                };
+                VK_CHECK(vkCreateFence(this->device, &fence_info, nullptr, &this->transfer_fence));
+            }
+
+            // Temporary
+            {
+                VkDescriptorSetLayoutBinding global_ubo = {
+                    .binding = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+                };
+
+                VkDescriptorSetLayoutCreateInfo global_info = {
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                    .bindingCount = 1,
+                    .pBindings = &global_ubo
+                };
+
+                VK_CHECK(vkCreateDescriptorSetLayout(this->device, &global_info, nullptr, &this->global_layout));
+            }
+
+            {
+                VkDescriptorSetLayoutBinding diffuse_tex = {
+                    .binding = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .descriptorCount = 0,
+                    .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+                };
+
+                VkDescriptorSetLayoutCreateInfo phong_info = {
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                    .bindingCount = 1,
+                    .pBindings = &diffuse_tex
+                };
+
+                VK_CHECK(vkCreateDescriptorSetLayout(this->device, &phong_info, nullptr, &this->phong_material_layout));
+            }
+
+            {
+                VkDescriptorSetLayout set_layouts[] = { this->global_layout, this->phong_material_layout };
+
+                VkPushConstantRange push_constant = {
+                    .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                    .offset = 0,
+                    .size = 128,   
+                };
+
+                VkPipelineLayoutCreateInfo layout_info = {
+                    .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                    .setLayoutCount = 2,
+                    .pSetLayouts = set_layouts,
+                    .pushConstantRangeCount = 1,
+                    .pPushConstantRanges = &push_constant
+                };
+
+                VkPipelineLayout pipeline_layout;
+                VK_CHECK(vkCreatePipelineLayout(this->device, &layout_info, nullptr, &pipeline_layout));
+
+                VkShaderModule vertex_shader;
+                vulkan_load_shader_module("../shaders/default.vert.spv", this->device, &vertex_shader);
+                VkShaderModule fragment_shader;
+                vulkan_load_shader_module("../shaders/default.frag.spv", this->device, &fragment_shader);
+
+                GraphicsPipelineCompiler graphics_pipeline_compiler;
+                graphics_pipeline_compiler.set_layout(pipeline_layout);
+                graphics_pipeline_compiler.set_color_formats({this->swapchain.format});
+                graphics_pipeline_compiler.add_binding(0, 8 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX);
+                graphics_pipeline_compiler.add_attribute(0, 0, 0, VK_FORMAT_R32G32B32_SFLOAT);
+                graphics_pipeline_compiler.add_attribute(0, 1, 3 * sizeof(float), VK_FORMAT_R32G32B32_SFLOAT);
+                graphics_pipeline_compiler.add_attribute(0, 2, 6 * sizeof(float), VK_FORMAT_R32G32_SFLOAT);
+                graphics_pipeline_compiler.add_shader(vertex_shader, VK_SHADER_STAGE_VERTEX_BIT);
+                graphics_pipeline_compiler.add_shader(fragment_shader, VK_SHADER_STAGE_FRAGMENT_BIT);
+                this->phong_pipeline = graphics_pipeline_compiler.compile(this->device);
+        
+                vkDestroyShaderModule(this->device, vertex_shader, nullptr);
+                vkDestroyShaderModule(this->device, fragment_shader, nullptr);
+            }
+
+
+            // FIXME: Temporary transfer queue test
+            Buffer buffer = create_buffer(this->allocator, 1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+            void* data = buffer.info.pMappedData;
+            memset(data, 255, 1024);
+
+            Buffer final_buffer = create_buffer(this->allocator, 1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+
+            VK_CHECK(vkResetFences(this->device, 1, &this->transfer_fence));
+            VK_CHECK(vkResetCommandBuffer(this->transfer_cmd, 0));
+
+            VkCommandBufferBeginInfo begin_info = {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+            };
+
+            VK_CHECK(vkBeginCommandBuffer(this->transfer_cmd, &begin_info));
+
+            VkBufferCopy copy_info = {
+                .srcOffset = 0,
+                .dstOffset = 0,
+                .size = 1024,
+            };
+
+            vkCmdCopyBuffer(this->transfer_cmd, buffer.handle, final_buffer.handle, 1, &copy_info);
+
+
+            VK_CHECK(vkEndCommandBuffer(this->transfer_cmd));
+
+            VkCommandBufferSubmitInfo buffer_submit_info = {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+                .commandBuffer = this->transfer_cmd,
+                .deviceMask = 0
+            };
+
+            VkSubmitInfo2 submit_info = {
+                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+                .commandBufferInfoCount = 1,
+                .pCommandBufferInfos = &buffer_submit_info
+            };
+
+            VK_CHECK(vkQueueSubmit2(this->transfer_queue.handle, 1, &submit_info, this->transfer_fence));
+            VK_CHECK(vkWaitForFences(this->device, 1, &this->transfer_fence, true, UINT64_MAX));
+
+            vmaDestroyBuffer(this->allocator, buffer.handle, buffer.allocation);
+            vmaDestroyBuffer(this->allocator, final_buffer.handle, final_buffer.allocation);
+            
         }
 
         void Renderer::deinit()
         {
+            vkDestroyFence(this->device, this->transfer_fence, nullptr);
+            vkDestroyCommandPool(this->device, this->transfer_pool, nullptr);
+            vkDestroyDescriptorSetLayout(this->device, this->phong_material_layout, nullptr);
+            vkDestroyDescriptorSetLayout(this->device, this->global_layout, nullptr);
+            vkDestroyPipeline(this->device, this->phong_pipeline.handle, nullptr);
+            vkDestroyPipelineLayout(this->device, this->phong_pipeline.layout, nullptr);
+
 
             material_set_allocator.destroy_pool(this->device);
             deinit_imgui();
@@ -103,6 +297,10 @@ namespace Twilight
             this->graphics_queue = { 
                 .handle = device.get_queue(vkb::QueueType::graphics).value(), 
                 .family = device.get_queue_index(vkb::QueueType::graphics).value() 
+            };
+            this->transfer_queue = {
+                .handle = device.get_queue(vkb::QueueType::transfer).value(),
+                .family = device.get_queue_index(vkb::QueueType::transfer).value()
             };
         }
 
@@ -216,22 +414,10 @@ namespace Twilight
 
         void Renderer::load_material()
         {
-            VkDescriptorSetLayoutBinding texture = {
-                .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
-            };
+            VkDescriptorSet mat_set = material_set_allocator.allocate(this->device, this->phong_material_layout);
 
+            
 
-            VkDescriptorSetLayoutCreateInfo layout_info = {
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                .bindingCount = 1,
-                .pBindings = &texture
-            };
-
-            VkDescriptorSetLayout descriptor_layout;
-            VK_CHECK(vkCreateDescriptorSetLayout(this->device, &layout_info, nullptr, &descriptor_layout));
         }
 
     }

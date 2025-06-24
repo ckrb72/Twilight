@@ -192,7 +192,7 @@ int main()
     VkPipelineLayout pipeline_layout;
     VK_CHECK(vkCreatePipelineLayout(context.device, &pipeline_layout_info, nullptr, &pipeline_layout));
 
-    GraphicsPipeline graphics_pipeline;
+    Twilight::Render::GraphicsPipeline graphics_pipeline;
     {
         VkShaderModule vertex_shader;
         vulkan_load_shader_module("../shaders/default.vert.spv", context.device, &vertex_shader);
@@ -207,7 +207,7 @@ int main()
         graphics_pipeline_compiler.add_attribute(0, 2, 6 * sizeof(float), VK_FORMAT_R32G32_SFLOAT);
         graphics_pipeline_compiler.add_shader(vertex_shader, VK_SHADER_STAGE_VERTEX_BIT);
         graphics_pipeline_compiler.add_shader(fragment_shader, VK_SHADER_STAGE_FRAGMENT_BIT);
-        graphics_pipeline = graphics_pipeline_compiler.compile(context);
+        graphics_pipeline = graphics_pipeline_compiler.compile(context.device);
         
         vkDestroyShaderModule(context.device, vertex_shader, nullptr);
         vkDestroyShaderModule(context.device, fragment_shader, nullptr);
@@ -251,7 +251,7 @@ int main()
 
     AssetManager asset_manager;
     asset_manager.init(&context);
-    SceneNode cube_model = asset_manager.load_model("../DamagedHelmet.glb");
+    SceneNode cube_model = asset_manager.load_model("../little-guy.glb");
 
     double previous_time = glfwGetTime();
     double previous_x, previous_y;
@@ -407,7 +407,7 @@ int main()
             vkCmdBeginRendering(cmd, &render_info);
         }
 
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline.pipeline);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline.handle);
 
         VkViewport viewport = {
             .x = 0,
@@ -495,7 +495,7 @@ int main()
 
     vulkan_destroy_image(context, data_image);
     vulkan_destroy_image(context, depth_image);
-    vulkan_destroy_graphics_pipeline(context, graphics_pipeline);
+    vkDestroyPipeline(context.device, graphics_pipeline.handle, nullptr);
     vkDestroyPipelineLayout(context.device, pipeline_layout, nullptr);
     vkDestroyDescriptorSetLayout(context.device, descriptor_layout, nullptr);
     descriptor_allocator.destroy_pool(context.device);

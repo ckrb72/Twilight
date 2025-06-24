@@ -3,25 +3,12 @@
 #include <GLFW/glfw3.h>
 #include "DescriptorAllocator.h"
 #include "vma.h"
+#include "TwilightTypes.h"
 
 namespace Twilight
 {
     namespace Render
     {
-
-        struct Buffer;
-        struct Image;
-        struct Material;
-
-        enum MaterialType
-        {
-            MAT_FLOAT,
-            MAT_INT32,
-            MAT_UINT32,
-            MAT_DOUBLE,
-            MAT_TEXTURE
-        };
-
         class Renderer
         {
             private:
@@ -51,12 +38,26 @@ namespace Twilight
                 };
 
                 Queue graphics_queue;
+                Queue transfer_queue;
 
                 DescriptorAllocator general_set_allocator;
                 DescriptorAllocator material_set_allocator;
                 /*std::vector<DescriptorAllocator> material_set_allocators;*/       // Have a separate allocator per material type (i.e. PBR has it's own allocator, PHONG has an allocator, and so on)
 
                 VkDescriptorPool imgui_pool;
+
+
+                // Temporary
+                VkDescriptorSetLayout phong_material_layout;
+                VkDescriptorSetLayout global_layout;
+
+                GraphicsPipeline phong_pipeline;
+
+                VkCommandPool transfer_pool;
+                VkCommandBuffer transfer_cmd;
+                VkFence transfer_fence;
+
+                
 
                 void init_vulkan();
                 void deinit_vulkan();

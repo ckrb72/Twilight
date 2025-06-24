@@ -114,7 +114,6 @@ void vulkan_destroy_buffer(const VulkanContext& context, VulkanBuffer& buffer);
 VulkanImage vulkan_create_image(const VulkanContext& context, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped);
 VulkanImage vulkan_create_image(const VulkanContext& context, void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped);
 void vulkan_destroy_image(const VulkanContext& context, VulkanImage& image);
-void vulkan_destroy_graphics_pipeline(const VulkanContext& context, GraphicsPipeline& pipeline);
 
 /* Rendering */
 void vulkan_immediate_begin(const VulkanContext& context);

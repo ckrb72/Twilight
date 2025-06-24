@@ -1,4 +1,5 @@
 #include "GraphicsPipelineCompiler.h"
+#include "RenderUtil.h"
 
 GraphicsPipelineCompiler::GraphicsPipelineCompiler()
 {
@@ -51,7 +52,12 @@ void GraphicsPipelineCompiler::add_shader(VkShaderModule shader, VkShaderStageFl
     m_shader_stages.push_back(shader_stage);
 }
 
-GraphicsPipeline GraphicsPipelineCompiler::compile(const VulkanContext& context)
+void GraphicsPipelineCompiler::set_color_formats(std::vector<VkFormat> formats)
+{
+    color_formats = formats;
+}
+
+Twilight::Render::GraphicsPipeline GraphicsPipelineCompiler::compile(VkDevice device)
 {
     VkPipelineInputAssemblyStateCreateInfo input_assembler = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
@@ -92,8 +98,8 @@ GraphicsPipeline GraphicsPipelineCompiler::compile(const VulkanContext& context)
 
     VkPipelineRenderingCreateInfo render_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-        .colorAttachmentCount = 1,
-        .pColorAttachmentFormats = &context.swapchain.format,
+        .colorAttachmentCount = static_cast<uint32_t>(color_formats.size()),
+        .pColorAttachmentFormats = color_formats.data(),
         .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT
     };
 
@@ -148,7 +154,7 @@ GraphicsPipeline GraphicsPipelineCompiler::compile(const VulkanContext& context)
     };
 
     VkPipeline pipeline;
-    VK_CHECK(vkCreateGraphicsPipelines(context.device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &pipeline));
+    VK_CHECK(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &pipeline));
 
     return {pipeline, m_layout};
 }

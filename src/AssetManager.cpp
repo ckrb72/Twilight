@@ -149,7 +149,7 @@ uint32_t AssetManager::load_materials(const aiScene* scene)
     std::cout << scene->mNumMaterials << std::endl;
     for(int mat_index = 0; mat_index < scene->mNumMaterials; mat_index++)
     {
-        aiMaterial* material = scene->mMaterials[mat_index];
+        /*aiMaterial* material = scene->mMaterials[mat_index];
         
         aiString tex_path;
         material->GetTexture(aiTextureType_DIFFUSE, 0, &tex_path);
@@ -157,13 +157,13 @@ uint32_t AssetManager::load_materials(const aiScene* scene)
         assert(texture != nullptr);
 
         int width, height;
-        unsigned char* image_data = stbi_load_from_memory((unsigned char*)texture->pcData, texture->mWidth, &width, &height, nullptr, 4);
+        unsigned char* image_data = stbi_load_from_memory((unsigned char*)texture->pcData, texture->mWidth, &width, &height, nullptr, 4);*/
 
         /*
             In renderer:
-                create_descriptor_layout()
+                create_descriptor_layout() at startup for each type of material we want (maybe lazily make)
 
-                create_pipeline_if_needed()
+                create_pipeline_if_needed() at startup for each type of material we want (maybe lazily make)
 
                 allocate_descriptor()
 
@@ -175,11 +175,11 @@ uint32_t AssetManager::load_materials(const aiScene* scene)
         */
 
         // Temporary
-        VulkanImage image = vulkan_create_image(*renderer, (void*)image_data, VkExtent3D{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT, false);
+        /*VulkanImage image = vulkan_create_image(*renderer, (void*)image_data, VkExtent3D{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT, false);
 
         vulkan_destroy_image(*renderer, image);
 
-        stbi_image_free(image_data);
+        stbi_image_free(image_data);*/
     }
 
     return 0;
