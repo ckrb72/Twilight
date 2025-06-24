@@ -1,7 +1,7 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <vector>
-#include "TwilightTypes.h"
+#include "twilight_types.h"
 
 class GraphicsPipelineCompiler
 {

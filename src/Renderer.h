@@ -3,7 +3,7 @@
 #include <GLFW/glfw3.h>
 #include "DescriptorAllocator.h"
 #include "vma.h"
-#include "TwilightTypes.h"
+#include "twilight_types.h"
 
 namespace Twilight
 {

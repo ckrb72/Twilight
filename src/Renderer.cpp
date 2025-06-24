@@ -5,7 +5,8 @@
 #include "imgui/imgui_impl_vulkan.h"
 
 #include "GraphicsPipelineCompiler.h"
-#include "RenderUtil.h"
+#include "render_util.h"
+#include "render_backend.h"
 #include <fstream>
 
 static bool vulkan_load_shader_module(const char* path, VkDevice device, VkShaderModule* out_module)
@@ -42,24 +43,6 @@ namespace Twilight
 {
     namespace Render
     {
-        static Buffer create_buffer(VmaAllocator allocator, uint64_t size, VkBufferUsageFlags usage, VmaMemoryUsage alloc_usage)
-        {
-            VkBufferCreateInfo buf_info = {
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = size,
-                .usage = usage
-            };
-
-            VmaAllocationCreateInfo alloc_info = {
-                .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
-                .usage = alloc_usage
-            };
-
-            Buffer buffer = {};
-            VK_CHECK(vmaCreateBuffer(allocator, &buf_info, &alloc_info, &buffer.handle, &buffer.allocation, &buffer.info));
-    
-            return buffer;
-        }
 
         Renderer::Renderer()
         {
@@ -182,51 +165,12 @@ namespace Twilight
 
 
             // FIXME: Temporary transfer queue test
-            Buffer buffer = create_buffer(this->allocator, 1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-            void* data = buffer.info.pMappedData;
-            memset(data, 255, 1024);
+            uint8_t data[4] = { 255, 255, 255, 255 };
 
-            Buffer final_buffer = create_buffer(this->allocator, 1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+            Image test_image = create_image(device, allocator, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, data, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT);
 
-            VK_CHECK(vkResetFences(this->device, 1, &this->transfer_fence));
-            VK_CHECK(vkResetCommandBuffer(this->transfer_cmd, 0));
-
-            VkCommandBufferBeginInfo begin_info = {
-                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-                .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-            };
-
-            VK_CHECK(vkBeginCommandBuffer(this->transfer_cmd, &begin_info));
-
-            VkBufferCopy copy_info = {
-                .srcOffset = 0,
-                .dstOffset = 0,
-                .size = 1024,
-            };
-
-            vkCmdCopyBuffer(this->transfer_cmd, buffer.handle, final_buffer.handle, 1, &copy_info);
-
-
-            VK_CHECK(vkEndCommandBuffer(this->transfer_cmd));
-
-            VkCommandBufferSubmitInfo buffer_submit_info = {
-                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-                .commandBuffer = this->transfer_cmd,
-                .deviceMask = 0
-            };
-
-            VkSubmitInfo2 submit_info = {
-                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-                .commandBufferInfoCount = 1,
-                .pCommandBufferInfos = &buffer_submit_info
-            };
-
-            VK_CHECK(vkQueueSubmit2(this->transfer_queue.handle, 1, &submit_info, this->transfer_fence));
-            VK_CHECK(vkWaitForFences(this->device, 1, &this->transfer_fence, true, UINT64_MAX));
-
-            vmaDestroyBuffer(this->allocator, buffer.handle, buffer.allocation);
-            vmaDestroyBuffer(this->allocator, final_buffer.handle, final_buffer.allocation);
-            
+            vkDestroyImageView(this->device, test_image.view, nullptr);
+            vmaDestroyImage(this->allocator, test_image.handle, test_image.allocation);
         }
 
         void Renderer::deinit()
