@@ -1,10 +1,4 @@
 #include <iostream>
-
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_vulkan.h"
-
-
 #include "render/Renderer.h"
 #include "AssetManager.h"
 
@@ -17,6 +11,7 @@
 
 const int WIN_WIDTH = 1920, WIN_HEIGHT = 1080;
 
+// Temporary
 void free_node(Twilight::Render::Renderer* renderer, Twilight::Render::Model& node)
 {
     for(Twilight::Render::Mesh& mesh : node.meshes)
@@ -42,9 +37,9 @@ int main()
     Twilight::Render::Renderer renderer;
     renderer.init(window, WIN_WIDTH, WIN_HEIGHT);
 
-    AssetManager asset_manager;
+    Twilight::AssetManager asset_manager;
     asset_manager.init(&renderer);
-    Twilight::Render::Model cube_model = asset_manager.load_model("../little-guy.glb");
+    Twilight::Render::Model cube_model = asset_manager.load_model("../DamagedHelmet.glb");
 
     /* Twilight::Render::Material material = renderer->create_material(material_stuff) */
     /* renderer->bind_material(material)*/

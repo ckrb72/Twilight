@@ -47,6 +47,17 @@ namespace Twilight
             AMBIENT_OCCLUSION,
         };
 
+        enum MaterialConstantType : uint8_t
+        {
+            ALBEDO
+        };
+
+        struct MaterialConstantBinding
+        {
+            void* data;
+            MaterialConstantType type;
+        };
+
         struct MaterialTextureBinding
         {
             void* data;

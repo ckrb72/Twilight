@@ -106,6 +106,7 @@ namespace Twilight
                 vkUpdateDescriptorSets(this->device, 1, &write_set, 0, nullptr);
             }
 
+            // Figure out how to abstract this so materials are easy to create
             {
                 std::vector<uint8_t> image_data = std::vector<uint8_t>(16);
                 for(int i = 0; i < 16; i += 4)
@@ -155,6 +156,11 @@ namespace Twilight
         void Renderer::deinit()
         {
             vkDeviceWaitIdle(this->device);
+
+            for(Material& mat : this->materials)
+            {
+                destroy_material(mat);
+            }
 
             Vulkan::destroy_image(this->device, this->allocator, this->depth_buffer);
             Vulkan::destroy_buffer(this->allocator, this->global_ubo);
@@ -478,14 +484,12 @@ namespace Twilight
         }
 
 
-        void Renderer::load_material(std::vector<MaterialTextureBinding> texture_bindings)
+        // Hardcoded for  "phong" model with one diffuse texture right now
+        // Allow for different material types
+        void Renderer::load_material(std::vector<MaterialConstantBinding> constant_bindings, std::vector<MaterialTextureBinding> texture_bindings)
         {
 
             /*
-                create_descriptor_layout() at startup for each type of material we want (maybe lazily make)
-
-                create_pipeline_if_needed() at startup for each type of material we want (maybe lazily make)
-
                 allocate_descriptor()
 
                 allocate_resources()
@@ -505,10 +509,35 @@ namespace Twilight
 
             assert(texture_bindings[0].data != nullptr);
 
-            Image diffuse_texture = Vulkan::create_image(this->device, this->allocator, VkExtent3D{texture_bindings[0].width, texture_bindings[0].height, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT);
+            Image diffuse_texture = Vulkan::create_image(this->device, this->allocator, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, texture_bindings[0].data, VkExtent3D{texture_bindings[0].width, texture_bindings[0].height, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT);
 
+            Vulkan::transfer_begin(this->device, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence});
 
+            Vulkan::Cmd::transition_image(this->transfer_cmd, diffuse_texture.handle, {VK_ACCESS_2_TRANSFER_WRITE_BIT, 
+                                         VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, 
+                                         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}, { VK_IMAGE_ASPECT_COLOR_BIT, 
+                                         0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
 
+            Vulkan::transfer_end(this->device, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence});
+
+            VkDescriptorImageInfo img_info = {
+                .sampler = this->default_sampler,
+                .imageView = diffuse_texture.view,
+                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            };
+
+            VkWriteDescriptorSet diffuse_write = {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = mat_set,
+                .dstBinding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &img_info
+            };
+            vkUpdateDescriptorSets(this->device, 1, &diffuse_write, 0, nullptr);
+
+            // TODO: Come up with id system so multiple models can be loaded
+            this->materials.push_back({.pipeline = &this->phong_pipeline, .descriptor_set = mat_set, .buffer = {}, .texture = diffuse_texture});
         }
 
         // TODO: Think about how to refactor this because not the best rn
@@ -532,10 +561,6 @@ namespace Twilight
 
             frame_begin(frame, internal_data);
 
-            // Bind material (binds pipeline, sets viewport, binds associated descriptor sets)
-            bind_material(error_material);
-
-            
             VkDeviceSize sizes[] = {0};
             
             // Draw stuff with particular material...
@@ -543,10 +568,15 @@ namespace Twilight
             {
                 if(mesh == nullptr) continue;
 
+                // Bind material (binds pipeline, sets viewport, binds associated descriptor sets)
+                // FIXME: Make this bind per material. 
+                // IMPORTANT: This should only rebind the pipeline when necessary
+                bind_material(this->materials[mesh->material_index]);
+
                 // if decide to use descriptors for this eventually then just bind the descriptor set while drawing and obviously update shaders
-                glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.5f, 0.0f));
-                //model_mat = glm::rotate(model_mat, glm::radians(angle), glm::vec3(1.0f, 1.0f, 1.0f));
-                model_mat = glm::scale(model_mat, glm::vec3(0.25f));
+                glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+                model_mat = glm::rotate(model_mat, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                model_mat = glm::scale(model_mat, glm::vec3(1.0f));
 
                 PushConstants push_constants = 
                 {

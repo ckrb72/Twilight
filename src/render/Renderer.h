@@ -115,6 +115,7 @@ namespace Twilight
 
                 // Probably don't want to use raw pointers tbh but for now this is fine
                 std::vector<Mesh*> draw_list = std::vector<Mesh*>(256);
+                std::vector<Material> materials;
 
             public:
 
@@ -129,7 +130,7 @@ namespace Twilight
                 Image create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage);
                 void destroy_image(Image& image);
                 
-                void load_material(std::vector<MaterialTextureBinding> texture_bindings);
+                void load_material(std::vector<MaterialConstantBinding> constant_bindings, std::vector<MaterialTextureBinding> texture_bindings);
                 void draw(const Model& node);
                 void present();
                 void deinit();
