@@ -25,10 +25,9 @@ void AssetManager::init(Twilight::Render::Renderer* renderer, VulkanContext* con
     this->temp_renderer = context;
 }
 
-SceneNode AssetManager::load_model(const std::string& path)
+Twilight::Render::SceneNode AssetManager::load_model(const std::string& path)
 {
     // FIXME: hacky way to do this for now
-    assert(temp_renderer != nullptr);
 
     const aiScene* scene = importer.ReadFile(path, aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_JoinIdenticalVertices);
     
@@ -46,14 +45,14 @@ SceneNode AssetManager::load_model(const std::string& path)
     // load_lights();
     // load_cameras();
 
-    SceneNode root = load_node(scene->mRootNode, scene);
+    Twilight::Render::SceneNode root = load_node(scene->mRootNode, scene);
 
     return root;
 }
 
-SceneNode AssetManager::load_node(aiNode* node, const aiScene* scene)
+Twilight::Render::SceneNode AssetManager::load_node(aiNode* node, const aiScene* scene)
 {
-    SceneNode scene_node = {};
+    Twilight::Render::SceneNode scene_node = {};
     scene_node.meshes.reserve(node->mNumMeshes);
     scene_node.children.reserve(node->mNumChildren);
 
@@ -74,9 +73,9 @@ SceneNode AssetManager::load_node(aiNode* node, const aiScene* scene)
             load_indices(mesh, indices);
         }
 
-        Mesh node_mesh = {
-            .vertices = vulkan_create_buffer(*temp_renderer, vertices.size() * sizeof(Vertex), vertices.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT),
-            .indices = vulkan_create_buffer(*temp_renderer, indices.size() * sizeof(unsigned int), indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
+        Twilight::Render::Mesh node_mesh = {
+            .vertices = renderer->create_buffer(vertices.data(), vertices.size() * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT),
+            .indices = renderer->create_buffer(indices.data(), indices.size() * sizeof(unsigned int), VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
             .index_count = static_cast<uint32_t>(indices.size()),
             .material_index = mesh->mMaterialIndex  /* Will probably need to change this up depending on how I store materials in the AssetManager*/
         };

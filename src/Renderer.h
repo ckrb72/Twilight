@@ -15,6 +15,7 @@ namespace Twilight
         struct FrameData
         {
             VkCommandBuffer cmd;
+            VkPipelineLayout layout;
             uint32_t swapchain_index;
         };
 

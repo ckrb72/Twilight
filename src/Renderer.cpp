@@ -13,6 +13,12 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+struct PushConstants
+{
+    glm::mat4 model;
+    glm::mat4 norm_mat;
+};
+
 static bool vulkan_load_shader_module(const char* path, VkDevice device, VkShaderModule* out_module)
 {
     std::ifstream file(path, std::ios::ate | std::ios::binary);
@@ -175,6 +181,8 @@ namespace Twilight
                     .projection = glm::perspective(glm::radians(45.0f), (float)width/ (float)height, 0.1f, 100.0f),
                     .view = glm::lookAt(glm::vec3(0.0, 0.0, 5.0), glm::vec3(0.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0))
                 };
+
+                global_ubo_cpu.projection[1][1] *= -1.0;
 
                 this->global_ubo = Vulkan::create_buffer(this->device, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, this->allocator, &global_ubo_cpu, sizeof(GlobalUbo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 
@@ -681,11 +689,38 @@ namespace Twilight
                 vkCmdBeginRendering(frame_context->cmd, &render_info);
             }
 
+
+            // Temporary
             vkCmdBindPipeline(frame_context->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->phong_pipeline.handle);
 
-            VkDescriptorSet sets[] = { this->global_set, this->error_material };
+            VkViewport viewport = {
+                .x = 0,
+                .y = 0,
+                .width = (float)this->swapchain.extent.width,
+                .height = (float)this->swapchain.extent.height,
+                .minDepth = 0.0f,
+                .maxDepth = 1.0f
+            };
+            VkRect2D scissor = {};
+            scissor.extent = this->swapchain.extent;
+            scissor.offset = VkOffset2D{0, 0};
+            vkCmdSetViewport(frame_context->cmd, 0, 1, &viewport);
+            vkCmdSetScissor(frame_context->cmd, 0, 1, &scissor);
 
+            VkDescriptorSet sets[] = { this->global_set, this->error_material };
             vkCmdBindDescriptorSets(frame_context->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->phong_pipeline.layout, 0, 2, sets, 0, nullptr);
+    
+            glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+            //model_mat = glm::rotate(model_mat, glm::radians(angle), glm::vec3(1.0f, 1.0f, 1.0f));
+            //model_mat = glm::scale(model_mat, glm::vec3(0.25f));
+
+            PushConstants push_constants = 
+            {
+                .model = model_mat,
+                .norm_mat = glm::transpose(glm::inverse(model_mat))
+            };
+
+            vkCmdPushConstants(frame_context->cmd, this->phong_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push_constants);
 
 
             return *frame_context;

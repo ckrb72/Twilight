@@ -41,7 +41,7 @@ class AssetManager
                                                    Then in the load_model function instead of calling vulkan_create_buffer directly just call renderer.create_buffer(data, ...); */
         Twilight::Render::Renderer* renderer = nullptr;
 
-        SceneNode load_node(aiNode* node, const aiScene* scene);
+        Twilight::Render::SceneNode load_node(aiNode* node, const aiScene* scene);
         void load_vertices(const aiMesh* mesh, std::vector<Vertex>& vertices);
         void load_indices(const aiMesh* mesh, std::vector<unsigned int>& indices);
         uint32_t load_materials(const aiScene* scene);
@@ -51,5 +51,5 @@ class AssetManager
         AssetManager();
         ~AssetManager();
         void init(Twilight::Render::Renderer* renderer, VulkanContext* context);
-        SceneNode load_model(const std::string& path);
+        Twilight::Render::SceneNode load_model(const std::string& path);
 };

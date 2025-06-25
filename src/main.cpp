@@ -94,6 +94,9 @@ int main()
     Twilight::Render::Renderer renderer;
     renderer.init(window, WIN_WIDTH, WIN_HEIGHT);
 
+    AssetManager asset_manager;
+    asset_manager.init(&renderer, nullptr);
+    Twilight::Render::SceneNode cube_model = asset_manager.load_model("../little-guy.glb");
 
     /*VulkanContext context = init_vulkan(window, WIN_WIDTH, WIN_HEIGHT);
     assert(validate_vulkan(context));
@@ -292,13 +295,14 @@ int main()
         vkUpdateDescriptorSets(context.device, 2, write_sets, 0, nullptr);
     }*/
 
+    float angle = 0.0;
     while(!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
 
         Twilight::Render::FrameData frame = renderer.start_render();
 
-        
+        renderer.draw(cube_model);
 
         renderer.present();
         /*double current_time = glfwGetTime();
@@ -513,81 +517,3 @@ int main()
     glfwTerminate();
     return 0;
 }
-
-/*
-
-    float vertices[] =
-    {
-        -0.5, 0.5, 0.5,     0.0, 0.0,   0.0, 0.0, 1.0,
-        0.5, 0.5, 0.5,      1.0, 0.0,   0.0, 0.0, 1.0,
-        0.5, -0.5, 0.5,     1.0, 1.0,   0.0, 0.0, 1.0,
-        -0.5, -0.5, 0.5,    0.0, 1.0,   0.0, 0.0, 1.0,
-
-        0.5, 0.5, -0.5,     0.0, 0.0,   0.0, 0.0, -1.0,
-        -0.5, 0.5, -0.5,    1.0, 0.0,   0.0, 0.0, -1.0,
-        -0.5, -0.5, -0.5,   1.0, 1.0,   0.0, 0.0, -1.0,
-        0.5, -0.5, -0.5,    0.0, 1.0,   0.0, 0.0, -1.0,
-
-        -0.5, 0.5, -0.5,    0.0, 0.0,   -1.0, 0.0, 0.0,
-        -0.5, 0.5, 0.5,     1.0, 0.0,   -1.0, 0.0, 0.0,
-        -0.5, -0.5, 0.5,    1.0, 1.0,   -1.0, 0.0, 0.0,
-        -0.5, -0.5, -0.5,   0.0, 1.0,   -1.0, 0.0, 0.0,
-
-        0.5, 0.5, 0.5,      0.0, 0.0,   1.0, 0.0, 0.0,
-        0.5, 0.5, -0.5,     1.0, 0.0,   1.0, 0.0, 0.0,
-        0.5, -0.5, -0.5,    1.0, 1.0,   1.0, 0.0, 0.0,
-        0.5, -0.5, 0.5,     0.0, 1.0,   1.0, 0.0, 0.0,
-
-        -0.5, -0.5, 0.5,    0.0, 0.0,   0.0, -1.0, 0.0,
-        0.5, -0.5, 0.5,     1.0, 0.0,   0.0, -1.0, 0.0,
-        0.5, -0.5, -0.5,    1.0, 1.0,   0.0, -1.0, 0.0,
-        -0.5, -0.5, -0.5,   0.0, 1.0,   0.0, -1.0, 0.0,
-
-        -0.5, 0.5, -0.5,    0.0, 0.0,   0.0, 1.0, 0.0,
-        0.5, 0.5, -0.5,     1.0, 0.0,   0.0, 1.0, 0.0,
-        0.5, 0.5, 0.5,      1.0, 1.0,   0.0, 1.0, 0.0,
-        -0.5, 0.5, 0.5,     0.0, 1.0,   0.0, 1.0, 0.0
-    };
-    
-    VulkanBuffer staging_buffer = vulkan_create_buffer(context, sizeof(vertices), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-    void* vert_ptr = staging_buffer.info.pMappedData;
-    memcpy(vert_ptr, vertices, sizeof(vertices));
-
-
-    unsigned int indices[] = 
-    {
-        0, 1, 2,
-        2, 3, 0,
-
-        4, 5, 6,
-        6, 7, 4,
-
-        8, 9, 10,
-        10, 11, 8,
-
-        12, 13, 14,
-        14, 15, 12,
-
-        16, 17, 18,
-        18, 19, 16,
-
-        20, 21, 22,
-        22, 23, 20
-    };
-
-    VulkanBuffer index_staging_buffer = vulkan_create_buffer(context, sizeof(indices), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-    void* index_ptr = index_staging_buffer.info.pMappedData;
-    memcpy(index_ptr, indices, sizeof(indices));
-
-    VulkanBuffer index_buffer = vulkan_create_buffer(context, sizeof(indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
-    VulkanBuffer vertex_buffer = vulkan_create_buffer(context, sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
-    vulkan_immediate_begin(context);
-
-    vulkan_cmd_copy_buffer_to_buffer(context.immediate_buffer, sizeof(vertices), staging_buffer, vertex_buffer);
-    vulkan_cmd_copy_buffer_to_buffer(context.immediate_buffer, sizeof(indices), index_staging_buffer, index_buffer);
-
-    vulkan_immediate_end(context);
-
-    vulkan_destroy_buffer(context, staging_buffer);
-    vulkan_destroy_buffer(context, index_staging_buffer);
-*/
