@@ -1,5 +1,5 @@
 #pragma once
-#include "twilight_types.h"
+#include "../twilight_types.h"
 
 namespace Twilight
 {

@@ -4,7 +4,7 @@
 #include <vector>
 #include "DescriptorAllocator.h"
 #include "vma.h"
-#include "twilight_types.h"
+#include "../twilight_types.h"
 
 #define FRAME_FLIGHT_COUNT 2
 
@@ -12,13 +12,6 @@ namespace Twilight
 {
     namespace Render
     {
-
-        struct FrameData
-        {
-            VkCommandBuffer cmd;
-            VkPipelineLayout layout;
-            uint32_t swapchain_index;
-        };
 
         struct GlobalUbo
         {
@@ -57,11 +50,18 @@ namespace Twilight
                 Queue graphics_queue;
                 Queue transfer_queue;
 
+                // TODO: These two structs should really be one. No need to have them separate anymore
                 struct InternalFrameData
                 {
                     VkCommandPool pool;
                     VkFence render_fence;
                     VkSemaphore render_semaphore, swapchain_semaphore;
+                };
+                struct FrameData
+                {
+                    VkCommandBuffer cmd;
+                    VkPipelineLayout layout;
+                    uint32_t swapchain_index;
                 };
 
                 FrameData frames[FRAME_FLIGHT_COUNT];
@@ -102,9 +102,14 @@ namespace Twilight
                 void init_material_pipelines();
                 void deinit_material_pipelines();
 
+                void bind_material(const Material& material);
+
                 void create_swapchain(uint32_t width, uint32_t height);
                 void destroy_swapchain();
                 void destroy_material(Material& material);
+
+                void frame_begin(FrameData* frame, InternalFrameData* internal_data);
+                void frame_end(FrameData* frame, InternalFrameData* internal_data);
 
                 void draw_gui();
 
@@ -126,7 +131,6 @@ namespace Twilight
                 
                 void load_material(std::vector<MaterialTextureBinding> texture_bindings);
                 void draw(const Model& node);
-                void draw(const Buffer& vertex, const Buffer& index, uint32_t index_count);
                 void present();
                 void deinit();
 

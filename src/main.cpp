@@ -1,24 +1,11 @@
 #include <iostream>
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-#include <VkBootstrap.h>
-#include <fstream>
-
-#include "vma.h"
-
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_vulkan.h"
 
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
-#include "Renderer.h"
-#include "DescriptorAllocator.h"
-#include "DescriptorLayoutCompiler.h"
-#include "GraphicsPipelineCompiler.h"
+#include "render/Renderer.h"
 #include "AssetManager.h"
 
 /*
@@ -71,6 +58,7 @@ int main()
 
         renderer.present();
     }
+    // Fix free_node up so it actually frees the buffers at the correct time
     free_node(&renderer, cube_model);
     renderer.deinit();
 

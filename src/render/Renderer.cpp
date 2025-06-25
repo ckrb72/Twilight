@@ -1,8 +1,8 @@
 #include "Renderer.h"
 #include <VkBootstrap.h>
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_vulkan.h"
+#include "../imgui/imgui.h"
+#include "../imgui/imgui_impl_glfw.h"
+#include "../imgui/imgui_impl_vulkan.h"
 
 #include "GraphicsPipelineCompiler.h"
 #include "render_util.h"
@@ -511,12 +511,9 @@ namespace Twilight
 
         }
 
-        // For now this will directly call the render commands and stuff
-        // But when the renderer is done this will actually just sort the nodes based on the material and then add them to a queue to draw
-        // Then they will actually be draw in the present method
+        // TODO: Think about how to refactor this because not the best rn
         void Renderer::draw(const Model& node)
         {
-
             for(const Mesh& mesh : node.meshes)
             {
                 this->draw_list.push_back(&(Mesh&)mesh);
@@ -526,39 +523,142 @@ namespace Twilight
             {
                 draw(child);
             }
-
-            /*VkCommandBuffer cmd = this->frames[this->frame_count].cmd;
-            for(const Mesh& mesh : node.meshes)
-            {
-                // Bind material
-
-                // Bind vertices
-                VkDeviceSize sizes[] = {0};
-                vkCmdBindVertexBuffers(cmd, 0, 1, &mesh.vertices.handle, sizes);
-                vkCmdBindIndexBuffer(cmd, mesh.indices.handle, 0, VK_INDEX_TYPE_UINT32);
-                vkCmdDrawIndexed(cmd, mesh.index_count, 1, 0, 0, 0);
-            }
-
-            for(const Model& child : node.children)
-            {
-                draw(child);
-            }*/
         }
-
-        // Need to change this up because of the way I'm handling drawing for the renderer (right now these need to be wrapped in a mesh which probably isn't the best)
-        /*void Renderer::draw(const Buffer& vertex, const Buffer& index, uint32_t index_count)
-        {
-            VkCommandBuffer cmd = this->frames[this->frame_count].cmd;
-            vkCmdBindVertexBuffers(cmd, 0, 1, &vertex.handle, {});
-            vkCmdBindIndexBuffer(cmd, index.handle, 0, VK_INDEX_TYPE_UINT32);
-            vkCmdDrawIndexed(cmd, index_count, 1, 0, 0, 0);
-        }*/
 
         void Renderer::present()
         {
             InternalFrameData* internal_data = &this->frames_intl[this->frame_count];
             FrameData* frame = &this->frames[this->frame_count];
 
+            frame_begin(frame, internal_data);
+
+            // Bind material (binds pipeline, sets viewport, binds associated descriptor sets)
+            bind_material(error_material);
+
+            
+            VkDeviceSize sizes[] = {0};
+            
+            // Draw stuff with particular material...
+            for(Mesh* mesh : draw_list)
+            {
+                if(mesh == nullptr) continue;
+
+                // if decide to use descriptors for this eventually then just bind the descriptor set while drawing and obviously update shaders
+                glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.5f, 0.0f));
+                //model_mat = glm::rotate(model_mat, glm::radians(angle), glm::vec3(1.0f, 1.0f, 1.0f));
+                model_mat = glm::scale(model_mat, glm::vec3(0.25f));
+
+                PushConstants push_constants = 
+                {
+                    .model = model_mat,
+                    .norm_mat = glm::transpose(glm::inverse(model_mat))
+                };
+
+                vkCmdPushConstants(frame->cmd, this->phong_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push_constants);
+
+                vkCmdBindVertexBuffers(frame->cmd, 0, 1, &mesh->vertices.handle, sizes);
+                vkCmdBindIndexBuffer(frame->cmd, mesh->indices.handle, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(frame->cmd, mesh->index_count, 1, 0, 0, 0);
+            }
+
+            // Horribly inefficient and a sin against computers but for now this is okay until something better is figured out
+            this->draw_list.clear();
+
+            vkCmdEndRendering(frame->cmd);
+
+            draw_gui();
+
+            frame_end(frame, internal_data);
+        }
+
+        Buffer Renderer::create_buffer(void* data, uint64_t size, VkBufferUsageFlags usage)
+        {
+            return Vulkan::create_buffer(this->device, { this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence }, this->allocator, data, size, usage);
+        }
+
+        void Renderer::destroy_buffer(Buffer& buffer)
+        {
+            Vulkan::destroy_buffer(this->allocator, buffer);
+        }
+        
+        Image Renderer::create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage)
+        {
+            return Vulkan::create_image(this->device, this->allocator, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, data, size, format, usage);
+        }
+
+        void Renderer::destroy_image(Image& image)
+        {
+            Vulkan::destroy_image(this->device, this->allocator, image);
+        }
+
+        void Renderer::draw_gui()
+        {
+
+            // Temporary
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+            ImGui::ShowDemoWindow();
+            ImGui::Render();
+
+            FrameData* frame = &this->frames[this->frame_count];
+            VkRenderingAttachmentInfo imgui_attachment = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = this->swapchain.views[frame->swapchain_index],
+                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                .clearValue = {
+                    .color = {0.0, 0.0, 0.0, 1.0}
+                }
+            };
+
+            VkRenderingInfo imgui_render_info = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = VkRect2D{ {0, 0}, {this->swapchain.extent.width, this->swapchain.extent.height} },
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &imgui_attachment
+            }; 
+
+            vkCmdBeginRendering(frame->cmd, &imgui_render_info);
+            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), frame->cmd);
+            vkCmdEndRendering(frame->cmd);
+        }
+
+        void Renderer::bind_material(const Material& material)
+        {
+            FrameData* frame = &this->frames[this->frame_count];
+            vkCmdBindPipeline(frame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipeline->handle);
+
+            VkViewport viewport = {
+                .x = 0,
+                .y = 0,
+                .width = (float)this->swapchain.extent.width,
+                .height = (float)this->swapchain.extent.height,
+                .minDepth = 0.0f,
+                .maxDepth = 1.0f
+            };
+            VkRect2D scissor = {};
+            scissor.extent = this->swapchain.extent;
+            scissor.offset = VkOffset2D{0, 0};
+            vkCmdSetViewport(frame->cmd, 0, 1, &viewport);
+            vkCmdSetScissor(frame->cmd, 0, 1, &scissor);
+
+            VkDescriptorSet sets[] = { this->global_set, material.descriptor_set };
+            vkCmdBindDescriptorSets(frame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipeline->layout, 0, 2, sets, 0, nullptr);
+        }
+
+        void Renderer::destroy_material(Material& material)
+        {
+            Vulkan::destroy_buffer(this->allocator, material.buffer);
+            Vulkan::destroy_image(this->device, this->allocator, material.texture);
+            
+        }
+
+
+        void Renderer::frame_begin(FrameData* frame, InternalFrameData* internal_data)
+        {
             // Start frame and get swapchain image
             // Wait for fence to be signaled (if first loop fence is already signaled)
             VK_CHECK(vkWaitForFences(this->device, 1, &internal_data->render_fence, true, UINT64_MAX));
@@ -617,64 +717,10 @@ namespace Twilight
 
                 vkCmdBeginRendering(frame->cmd, &render_info);
             }
+        }
 
-
-            // Temporary
-
-            // Bind Material start
-            vkCmdBindPipeline(frame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->phong_pipeline.handle);
-
-            VkViewport viewport = {
-                .x = 0,
-                .y = 0,
-                .width = (float)this->swapchain.extent.width,
-                .height = (float)this->swapchain.extent.height,
-                .minDepth = 0.0f,
-                .maxDepth = 1.0f
-            };
-            VkRect2D scissor = {};
-            scissor.extent = this->swapchain.extent;
-            scissor.offset = VkOffset2D{0, 0};
-            vkCmdSetViewport(frame->cmd, 0, 1, &viewport);
-            vkCmdSetScissor(frame->cmd, 0, 1, &scissor);
-
-            VkDescriptorSet sets[] = { this->global_set, this->error_material.descriptor_set };
-            vkCmdBindDescriptorSets(frame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->phong_pipeline.layout, 0, 2, sets, 0, nullptr);
-
-            // Bind Material end
-    
-            glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
-            //model_mat = glm::rotate(model_mat, glm::radians(angle), glm::vec3(1.0f, 1.0f, 1.0f));
-            //model_mat = glm::scale(model_mat, glm::vec3(0.25f));
-
-            PushConstants push_constants = 
-            {
-                .model = model_mat,
-                .norm_mat = glm::transpose(glm::inverse(model_mat))
-            };
-
-            vkCmdPushConstants(frame->cmd, this->phong_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push_constants);
-            
-            VkDeviceSize sizes[] = {0};
-            
-            // Draw stuff with particular material...
-            for(Mesh* mesh : draw_list)
-            {
-                if(mesh == nullptr) continue;
-
-                vkCmdBindVertexBuffers(frame->cmd, 0, 1, &mesh->vertices.handle, sizes);
-                vkCmdBindIndexBuffer(frame->cmd, mesh->indices.handle, 0, VK_INDEX_TYPE_UINT32);
-                vkCmdDrawIndexed(frame->cmd, mesh->index_count, 1, 0, 0, 0);
-            }
-
-            // Horribly inefficient and a sin against computers but for now this is okay until something better is figured out
-            this->draw_list.clear();
-
-            vkCmdEndRendering(frame->cmd);
-
-            draw_gui();
-
-
+        void Renderer::frame_end(FrameData* frame, InternalFrameData* internal_data)
+        {
             // End Frame and actually submit the image for presentation
 
             // Transition image to presentable state
@@ -731,169 +777,6 @@ namespace Twilight
 
             VK_CHECK(vkQueuePresentKHR(this->graphics_queue.handle, &present_info));
             this->frame_count += (this->frame_count + 1) % FRAME_FLIGHT_COUNT;
-        }
-
-        // Temporary
-        FrameData Renderer::start_render()
-        {
-            const InternalFrameData* frame_data = &this->frames_intl[this->frame_count];
-            FrameData* frame_context = &this->frames[this->frame_count];
-
-            // Wait for fence to be signaled (if first loop fence is already signaled)
-            VK_CHECK(vkWaitForFences(this->device, 1, &frame_data->render_fence, true, UINT64_MAX));
-            // Here Fence is signaled
-            // Reset Fence to unsignaled
-            VK_CHECK(vkResetFences(this->device, 1, &frame_data->render_fence));
-            // Acquire swapchain image. Swapchain_semaphore will be signaled once it has been acquired
-            VK_CHECK(vkAcquireNextImageKHR(this->device, this->swapchain.handle, UINT64_MAX, frame_data->swapchain_semaphore, nullptr, &frame_context->swapchain_index));
-            VK_CHECK(vkResetCommandBuffer(frame_context->cmd, 0));
-            VkCommandBufferBeginInfo cmd_info = {
-                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-                .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-            };
-            VK_CHECK(vkBeginCommandBuffer(frame_context->cmd, &cmd_info));
-
-
-            // Get swapchain image, transition it to renderable format, start rendering...
-            Vulkan::Cmd::transition_image(frame_context->cmd, this->swapchain.images[frame_context->swapchain_index], {VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
-                                    VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
-                                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL}, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
-            Vulkan::Cmd::transition_image(frame_context->cmd, this->depth_buffer.handle, {VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, 
-                                    VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT, 
-                                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL}, {VK_IMAGE_ASPECT_DEPTH_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
-            
-            {
-                VkRenderingAttachmentInfo color_attachment_info = {
-                    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                    .imageView = this->swapchain.views[frame_context->swapchain_index],
-                    .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                    .clearValue = {
-                        .color = {0.1, 0.1, 0.1, 1.0}
-                    }
-                };
-
-                VkRenderingAttachmentInfo depth_attachment_info = {
-                    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                    .imageView = this->depth_buffer.view,
-                    .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                    .clearValue = {
-                        .depthStencil = {.depth = 1.0f}
-                    }
-                };
-
-                VkRenderingInfo render_info = {
-                    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                    .renderArea = VkRect2D{ {0, 0}, {this->swapchain.extent.width, this->swapchain.extent.height} },
-                    .layerCount = 1,
-                    .colorAttachmentCount = 1,
-                    .pColorAttachments = &color_attachment_info,
-                    .pDepthAttachment = &depth_attachment_info
-                };
-
-                vkCmdBeginRendering(frame_context->cmd, &render_info);
-            }
-
-
-            // Temporary
-            vkCmdBindPipeline(frame_context->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->phong_pipeline.handle);
-
-            VkViewport viewport = {
-                .x = 0,
-                .y = 0,
-                .width = (float)this->swapchain.extent.width,
-                .height = (float)this->swapchain.extent.height,
-                .minDepth = 0.0f,
-                .maxDepth = 1.0f
-            };
-            VkRect2D scissor = {};
-            scissor.extent = this->swapchain.extent;
-            scissor.offset = VkOffset2D{0, 0};
-            vkCmdSetViewport(frame_context->cmd, 0, 1, &viewport);
-            vkCmdSetScissor(frame_context->cmd, 0, 1, &scissor);
-
-            VkDescriptorSet sets[] = { this->global_set, this->error_material.descriptor_set };
-            vkCmdBindDescriptorSets(frame_context->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->phong_pipeline.layout, 0, 2, sets, 0, nullptr);
-    
-            glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
-            //model_mat = glm::rotate(model_mat, glm::radians(angle), glm::vec3(1.0f, 1.0f, 1.0f));
-            //model_mat = glm::scale(model_mat, glm::vec3(0.25f));
-
-            PushConstants push_constants = 
-            {
-                .model = model_mat,
-                .norm_mat = glm::transpose(glm::inverse(model_mat))
-            };
-
-            vkCmdPushConstants(frame_context->cmd, this->phong_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push_constants);
-
-
-            return *frame_context;
-        }
-
-        Buffer Renderer::create_buffer(void* data, uint64_t size, VkBufferUsageFlags usage)
-        {
-            return Vulkan::create_buffer(this->device, { this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence }, this->allocator, data, size, usage);
-        }
-
-        void Renderer::destroy_buffer(Buffer& buffer)
-        {
-            Vulkan::destroy_buffer(this->allocator, buffer);
-        }
-        
-        Image Renderer::create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage)
-        {
-            return Vulkan::create_image(this->device, this->allocator, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, data, size, format, usage);
-        }
-
-        void Renderer::destroy_image(Image& image)
-        {
-            Vulkan::destroy_image(this->device, this->allocator, image);
-        }
-
-        void Renderer::draw_gui()
-        {
-
-            // Temporary
-            ImGui_ImplVulkan_NewFrame();
-            ImGui_ImplGlfw_NewFrame();
-            ImGui::NewFrame();
-            ImGui::ShowDemoWindow();
-            ImGui::Render();
-
-            FrameData* frame = &this->frames[this->frame_count];
-            VkRenderingAttachmentInfo imgui_attachment = {
-                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                .imageView = this->swapchain.views[frame->swapchain_index],
-                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
-                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                .clearValue = {
-                    .color = {0.0, 0.0, 0.0, 1.0}
-                }
-            };
-
-            VkRenderingInfo imgui_render_info = {
-                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                .renderArea = VkRect2D{ {0, 0}, {this->swapchain.extent.width, this->swapchain.extent.height} },
-                .layerCount = 1,
-                .colorAttachmentCount = 1,
-                .pColorAttachments = &imgui_attachment
-            }; 
-
-            vkCmdBeginRendering(frame->cmd, &imgui_render_info);
-            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), frame->cmd);
-            vkCmdEndRendering(frame->cmd);
-        }
-
-        void Renderer::destroy_material(Material& material)
-        {
-            Vulkan::destroy_buffer(this->allocator, material.buffer);
-            Vulkan::destroy_image(this->device, this->allocator, material.texture);
-            
         }
     }
 }

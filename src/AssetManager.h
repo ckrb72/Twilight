@@ -6,7 +6,7 @@
 
 #include <glm/glm.hpp>
 #include "twilight_types.h"
-#include "Renderer.h"
+#include "render/Renderer.h"
 
 struct Vertex
 {
