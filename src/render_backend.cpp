@@ -1,5 +1,7 @@
 #include "render_backend.h"
 #include "render_util.h"
+#include <fstream>
+
 namespace Twilight
 {
     namespace Render
@@ -46,6 +48,8 @@ namespace Twilight
 
             void destroy_buffer(VmaAllocator allocator, Buffer& buffer)
             {
+                if(buffer.handle == VK_NULL_HANDLE) return;
+                
                 vmaDestroyBuffer(allocator, buffer.handle, buffer.allocation);
                 buffer.handle = VK_NULL_HANDLE;
                 buffer.allocation = VK_NULL_HANDLE;
@@ -193,6 +197,8 @@ namespace Twilight
 
             void destroy_image(VkDevice device, VmaAllocator allocator, Image& image)
             {
+                if(image.handle == VK_NULL_HANDLE) return;
+                
                 vkDestroyImageView(device, image.view, nullptr);
                 vmaDestroyImage(allocator, image.handle, image.allocation);
 
@@ -201,6 +207,35 @@ namespace Twilight
                 image.allocation = nullptr;
                 image.info = {};
             }
+
+        bool load_shader_module(const char* path, VkDevice device, VkShaderModule* out_module)
+        {
+            std::ifstream file(path, std::ios::ate | std::ios::binary);
+            if(!file.is_open())
+            {
+                std::cerr << "Failed to open file: " << path << std::endl;
+                return false;
+            }
+        
+            size_t file_size = (size_t)file.tellg();
+            std::vector<uint32_t> buffer(file_size / sizeof(uint32_t));
+            file.seekg(0);
+            file.read((char*)buffer.data(), file_size);
+            file.close();
+        
+            VkShaderModuleCreateInfo create_info = {
+                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                .codeSize = buffer.size() * sizeof(uint32_t),
+                .pCode = buffer.data()
+            };
+        
+            VkShaderModule shader_module;
+            VK_CHECK(vkCreateShaderModule(device, &create_info, nullptr, &shader_module))
+        
+            *out_module = shader_module;
+        
+            return true;
+        }
 
             namespace Cmd
             {

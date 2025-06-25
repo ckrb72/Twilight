@@ -3,13 +3,12 @@
 
 #include <vector>
 #include <iostream>
-#include "vulkan_backend.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 AssetManager::AssetManager()
-:importer(), temp_renderer()
+:importer(), renderer(nullptr)
 {
     stbi_set_flip_vertically_on_load(true);
 }
@@ -19,13 +18,12 @@ AssetManager::~AssetManager()
 
 }
 
-void AssetManager::init(Twilight::Render::Renderer* renderer, VulkanContext* context)
+void AssetManager::init(Twilight::Render::Renderer* renderer)
 {
     this->renderer = renderer;
-    this->temp_renderer = context;
 }
 
-Twilight::Render::SceneNode AssetManager::load_model(const std::string& path)
+Twilight::Render::Model AssetManager::load_model(const std::string& path)
 {
     // FIXME: hacky way to do this for now
 
@@ -45,14 +43,14 @@ Twilight::Render::SceneNode AssetManager::load_model(const std::string& path)
     // load_lights();
     // load_cameras();
 
-    Twilight::Render::SceneNode root = load_node(scene->mRootNode, scene);
+    Twilight::Render::Model root = load_node(scene->mRootNode, scene);
 
     return root;
 }
 
-Twilight::Render::SceneNode AssetManager::load_node(aiNode* node, const aiScene* scene)
+Twilight::Render::Model AssetManager::load_node(aiNode* node, const aiScene* scene)
 {
-    Twilight::Render::SceneNode scene_node = {};
+    Twilight::Render::Model scene_node = {};
     scene_node.meshes.reserve(node->mNumMeshes);
     scene_node.children.reserve(node->mNumChildren);
 

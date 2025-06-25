@@ -19,35 +19,7 @@ struct PushConstants
     glm::mat4 norm_mat;
 };
 
-static bool vulkan_load_shader_module(const char* path, VkDevice device, VkShaderModule* out_module)
-{
-    std::ifstream file(path, std::ios::ate | std::ios::binary);
-    if(!file.is_open())
-    {
-        std::cerr << "Failed to open file: " << path << std::endl;
-        return false;
-    }
-
-    size_t file_size = (size_t)file.tellg();
-    std::vector<uint32_t> buffer(file_size / sizeof(uint32_t));
-    file.seekg(0);
-    file.read((char*)buffer.data(), file_size);
-    file.close();
-
-    VkShaderModuleCreateInfo create_info = {
-        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = buffer.size() * sizeof(uint32_t),
-        .pCode = buffer.data()
-    };
-
-    VkShaderModule shader_module;
-    VK_CHECK(vkCreateShaderModule(device, &create_info, nullptr, &shader_module))
-
-    *out_module = shader_module;
-
-    return true;
-}
-
+/* Each material type supported will have it's own pipeline that can be referenced by the material when a new material is created. What specific pipeline is referenced is based on what material type you have */
 
 namespace Twilight
 {
@@ -99,81 +71,11 @@ namespace Twilight
                 VK_CHECK(vkCreateFence(this->device, &fence_info, nullptr, &this->transfer_fence));
             }
 
+            init_material_layouts();
+            init_material_pipelines();
+            
+            
             // Temporary
-            {
-                VkDescriptorSetLayoutBinding global_ubo = {
-                    .binding = 0,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .descriptorCount = 1,
-                    .stageFlags = VK_SHADER_STAGE_VERTEX_BIT
-                };
-
-                VkDescriptorSetLayoutCreateInfo global_info = {
-                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                    .bindingCount = 1,
-                    .pBindings = &global_ubo
-                };
-
-                VK_CHECK(vkCreateDescriptorSetLayout(this->device, &global_info, nullptr, &this->global_layout));
-            }
-
-            {
-                VkDescriptorSetLayoutBinding diffuse_tex = {
-                    .binding = 0,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .descriptorCount = 1,
-                    .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
-                };
-
-                VkDescriptorSetLayoutCreateInfo phong_info = {
-                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                    .bindingCount = 1,
-                    .pBindings = &diffuse_tex
-                };
-
-                VK_CHECK(vkCreateDescriptorSetLayout(this->device, &phong_info, nullptr, &this->phong_material_layout));
-            }
-
-            {
-                VkDescriptorSetLayout set_layouts[] = { this->global_layout, this->phong_material_layout };
-
-                VkPushConstantRange push_constant = {
-                    .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-                    .offset = 0,
-                    .size = 128,   
-                };
-
-                VkPipelineLayoutCreateInfo layout_info = {
-                    .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                    .setLayoutCount = 2,
-                    .pSetLayouts = set_layouts,
-                    .pushConstantRangeCount = 1,
-                    .pPushConstantRanges = &push_constant
-                };
-
-                VkPipelineLayout pipeline_layout;
-                VK_CHECK(vkCreatePipelineLayout(this->device, &layout_info, nullptr, &pipeline_layout));
-
-                VkShaderModule vertex_shader;
-                vulkan_load_shader_module("../shaders/default.vert.spv", this->device, &vertex_shader);
-                VkShaderModule fragment_shader;
-                vulkan_load_shader_module("../shaders/default.frag.spv", this->device, &fragment_shader);
-
-                GraphicsPipelineCompiler graphics_pipeline_compiler;
-                graphics_pipeline_compiler.set_layout(pipeline_layout);
-                graphics_pipeline_compiler.set_color_formats({this->swapchain.format});
-                graphics_pipeline_compiler.add_binding(0, 8 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX);
-                graphics_pipeline_compiler.add_attribute(0, 0, 0, VK_FORMAT_R32G32B32_SFLOAT);
-                graphics_pipeline_compiler.add_attribute(0, 1, 3 * sizeof(float), VK_FORMAT_R32G32B32_SFLOAT);
-                graphics_pipeline_compiler.add_attribute(0, 2, 6 * sizeof(float), VK_FORMAT_R32G32_SFLOAT);
-                graphics_pipeline_compiler.add_shader(vertex_shader, VK_SHADER_STAGE_VERTEX_BIT);
-                graphics_pipeline_compiler.add_shader(fragment_shader, VK_SHADER_STAGE_FRAGMENT_BIT);
-                this->phong_pipeline = graphics_pipeline_compiler.compile(this->device);
-        
-                vkDestroyShaderModule(this->device, vertex_shader, nullptr);
-                vkDestroyShaderModule(this->device, fragment_shader, nullptr);
-            }
-
             {
                 this->global_set = this->general_set_allocator.allocate(this->device, this->global_layout);
 
@@ -205,7 +107,6 @@ namespace Twilight
             }
 
             {
-                this->error_material = this->material_set_allocator.allocate(this->device, this->phong_material_layout);
                 std::vector<uint8_t> image_data = std::vector<uint8_t>(16);
                 for(int i = 0; i < 16; i += 4)
                 {
@@ -215,8 +116,6 @@ namespace Twilight
                     image_data[i + 3] = 255;
                 }
 
-                this->error_texture = Vulkan::create_image(this->device, this->allocator, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, image_data.data(), {2, 2, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT);
-
                 VkSamplerCreateInfo sampler_info = {
                     .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
                     .magFilter = VK_FILTER_NEAREST,
@@ -225,15 +124,21 @@ namespace Twilight
 
                 VK_CHECK(vkCreateSampler(this->device, &sampler_info, nullptr, &this->default_sampler));
 
+                this->error_material = {
+                    .pipeline = &this->phong_pipeline,
+                    .descriptor_set = this->material_set_allocator.allocate(this->device, this->phong_layout),
+                    .texture = Vulkan::create_image(this->device, this->allocator, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, image_data.data(), {2, 2, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT)
+                };
+
                 VkDescriptorImageInfo image_info = {
                     .sampler = this->default_sampler,
-                    .imageView = this->error_texture.view,
+                    .imageView = this->error_material.texture.view,
                     .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                 };
 
                 VkWriteDescriptorSet write_image_set = {
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = this->error_material,
+                    .dstSet = this->error_material.descriptor_set,
                     .dstBinding = 0,
                     .descriptorCount = 1,
                     .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -253,15 +158,14 @@ namespace Twilight
 
             Vulkan::destroy_image(this->device, this->allocator, this->depth_buffer);
             Vulkan::destroy_buffer(this->allocator, this->global_ubo);
-            Vulkan::destroy_image(this->device, this->allocator, this->error_texture);
+            this->destroy_material(this->error_material);
             vkDestroySampler(this->device, this->default_sampler, nullptr);
+            deinit_material_layouts();
 
             vkDestroyFence(this->device, this->transfer_fence, nullptr);
             vkDestroyCommandPool(this->device, this->transfer_pool, nullptr);
-            vkDestroyDescriptorSetLayout(this->device, this->phong_material_layout, nullptr);
-            vkDestroyDescriptorSetLayout(this->device, this->global_layout, nullptr);
-            vkDestroyPipeline(this->device, this->phong_pipeline.handle, nullptr);
-            vkDestroyPipelineLayout(this->device, this->phong_pipeline.layout, nullptr);
+            
+            deinit_material_pipelines();
 
 
             general_set_allocator.destroy_pool(this->device);
@@ -269,6 +173,98 @@ namespace Twilight
             deinit_imgui();
             destroy_swapchain();
             deinit_vulkan();
+        }
+
+        void Renderer::init_material_layouts()
+        {
+            {
+                VkDescriptorSetLayoutBinding global_ubo = {
+                    .binding = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+                };
+
+                VkDescriptorSetLayoutCreateInfo global_info = {
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                    .bindingCount = 1,
+                    .pBindings = &global_ubo
+                };
+
+                VK_CHECK(vkCreateDescriptorSetLayout(this->device, &global_info, nullptr, &this->global_layout));
+            }
+
+            {
+                VkDescriptorSetLayoutBinding diffuse_tex = {
+                    .binding = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .descriptorCount = 1,
+                    .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+                };
+
+                VkDescriptorSetLayoutCreateInfo phong_info = {
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                    .bindingCount = 1,
+                    .pBindings = &diffuse_tex
+                };
+
+                VK_CHECK(vkCreateDescriptorSetLayout(this->device, &phong_info, nullptr, &this->phong_layout));
+            }
+        }
+
+        void Renderer::deinit_material_layouts()
+        {
+            vkDestroyDescriptorSetLayout(this->device, this->global_layout, nullptr);
+            vkDestroyDescriptorSetLayout(this->device, this->phong_layout, nullptr);
+        }
+
+        void Renderer::init_material_pipelines()
+        {
+            {
+                VkDescriptorSetLayout set_layouts[] = { this->global_layout, this->phong_layout };
+
+                VkPushConstantRange push_constant = {
+                    .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                    .offset = 0,
+                    .size = 128,   
+                };
+
+                VkPipelineLayoutCreateInfo layout_info = {
+                    .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                    .setLayoutCount = 2,
+                    .pSetLayouts = set_layouts,
+                    .pushConstantRangeCount = 1,
+                    .pPushConstantRanges = &push_constant
+                };
+
+                VkPipelineLayout pipeline_layout;
+                VK_CHECK(vkCreatePipelineLayout(this->device, &layout_info, nullptr, &pipeline_layout));
+
+                VkShaderModule vertex_shader;
+                Vulkan::load_shader_module("../shaders/default.vert.spv", this->device, &vertex_shader);
+                VkShaderModule fragment_shader;
+                Vulkan::load_shader_module("../shaders/default.frag.spv", this->device, &fragment_shader);
+
+                GraphicsPipelineCompiler graphics_pipeline_compiler;
+                graphics_pipeline_compiler.set_layout(pipeline_layout);
+                graphics_pipeline_compiler.set_color_formats({this->swapchain.format});
+                graphics_pipeline_compiler.add_binding(0, 8 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX);
+                graphics_pipeline_compiler.add_attribute(0, 0, 0, VK_FORMAT_R32G32B32_SFLOAT);
+                graphics_pipeline_compiler.add_attribute(0, 1, 3 * sizeof(float), VK_FORMAT_R32G32B32_SFLOAT);
+                graphics_pipeline_compiler.add_attribute(0, 2, 6 * sizeof(float), VK_FORMAT_R32G32_SFLOAT);
+                graphics_pipeline_compiler.add_shader(vertex_shader, VK_SHADER_STAGE_VERTEX_BIT);
+                graphics_pipeline_compiler.add_shader(fragment_shader, VK_SHADER_STAGE_FRAGMENT_BIT);
+                this->phong_pipeline = graphics_pipeline_compiler.compile(this->device);
+        
+                vkDestroyShaderModule(this->device, vertex_shader, nullptr);
+                vkDestroyShaderModule(this->device, fragment_shader, nullptr);
+            }
+        }
+
+        void Renderer::deinit_material_pipelines()
+        {
+            vkDestroyPipeline(this->device, this->phong_pipeline.handle, nullptr);
+            vkDestroyPipelineLayout(this->device, this->phong_pipeline.layout, nullptr);
         }
 
         void Renderer::init_vulkan()
@@ -499,7 +495,7 @@ namespace Twilight
                 add_material_to_vector_or_something()
             */
            
-            VkDescriptorSet mat_set = material_set_allocator.allocate(this->device, this->phong_material_layout);
+            VkDescriptorSet mat_set = material_set_allocator.allocate(this->device, this->phong_layout);
 
             if(texture_bindings.size() < 1 && texture_bindings[0].type != MaterialTextureType::DIFFUSE)
             {
@@ -518,9 +514,20 @@ namespace Twilight
         // For now this will directly call the render commands and stuff
         // But when the renderer is done this will actually just sort the nodes based on the material and then add them to a queue to draw
         // Then they will actually be draw in the present method
-        void Renderer::draw(const SceneNode& node)
+        void Renderer::draw(const Model& node)
         {
-            VkCommandBuffer cmd = this->frames[this->frame_count].cmd;
+
+            for(const Mesh& mesh : node.meshes)
+            {
+                this->draw_list.push_back(&(Mesh&)mesh);
+            }
+
+            for(const Model& child : node.children)
+            {
+                draw(child);
+            }
+
+            /*VkCommandBuffer cmd = this->frames[this->frame_count].cmd;
             for(const Mesh& mesh : node.meshes)
             {
                 // Bind material
@@ -532,43 +539,149 @@ namespace Twilight
                 vkCmdDrawIndexed(cmd, mesh.index_count, 1, 0, 0, 0);
             }
 
-            for(const SceneNode& child : node.children)
+            for(const Model& child : node.children)
             {
                 draw(child);
-            }
+            }*/
         }
 
-        void Renderer::draw(const Buffer& vertex, const Buffer& index, uint32_t index_count)
+        // Need to change this up because of the way I'm handling drawing for the renderer (right now these need to be wrapped in a mesh which probably isn't the best)
+        /*void Renderer::draw(const Buffer& vertex, const Buffer& index, uint32_t index_count)
         {
             VkCommandBuffer cmd = this->frames[this->frame_count].cmd;
             vkCmdBindVertexBuffers(cmd, 0, 1, &vertex.handle, {});
             vkCmdBindIndexBuffer(cmd, index.handle, 0, VK_INDEX_TYPE_UINT32);
             vkCmdDrawIndexed(cmd, index_count, 1, 0, 0, 0);
-        }
+        }*/
 
         void Renderer::present()
         {
             InternalFrameData* internal_data = &this->frames_intl[this->frame_count];
             FrameData* frame = &this->frames[this->frame_count];
 
-            //TODO: Refactor this when ready so start_frame is actually "called" here. In other words, put the start frame code here instead of in it's own function.
-            // When an object is submitted to the renderer to draw, it will be added to a queue that will then get read here and all the necessary things will all be draw in this function.
-            // The draw function doesn't actually "draw" the objects. Instead, it just submits them to be drawn later in this function
+            // Start frame and get swapchain image
+            // Wait for fence to be signaled (if first loop fence is already signaled)
+            VK_CHECK(vkWaitForFences(this->device, 1, &internal_data->render_fence, true, UINT64_MAX));
+            // Here Fence is signaled
+            // Reset Fence to unsignaled
+            VK_CHECK(vkResetFences(this->device, 1, &internal_data->render_fence));
+            // Acquire swapchain image. Swapchain_semaphore will be signaled once it has been acquired
+            VK_CHECK(vkAcquireNextImageKHR(this->device, this->swapchain.handle, UINT64_MAX, internal_data->swapchain_semaphore, nullptr, &frame->swapchain_index));
+            VK_CHECK(vkResetCommandBuffer(frame->cmd, 0));
+            VkCommandBufferBeginInfo cmd_info = {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+            };
+            VK_CHECK(vkBeginCommandBuffer(frame->cmd, &cmd_info));
 
-            // Start command buffer
 
-            // Render all stuff that was submitted to renderer
+            // Get swapchain image, transition it to renderable format, start rendering...
+            Vulkan::Cmd::transition_image(frame->cmd, this->swapchain.images[frame->swapchain_index], {VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+                                    VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+                                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL}, { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
+            Vulkan::Cmd::transition_image(frame->cmd, this->depth_buffer.handle, {VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, 
+                                    VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT, 
+                                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL}, {VK_IMAGE_ASPECT_DEPTH_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS});
+            
+            {
+                VkRenderingAttachmentInfo color_attachment_info = {
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                    .imageView = this->swapchain.views[frame->swapchain_index],
+                    .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                    .clearValue = {
+                        .color = {0.1, 0.1, 0.1, 1.0}
+                    }
+                };
+
+                VkRenderingAttachmentInfo depth_attachment_info = {
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                    .imageView = this->depth_buffer.view,
+                    .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                    .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                    .clearValue = {
+                        .depthStencil = {.depth = 1.0f}
+                    }
+                };
+
+                VkRenderingInfo render_info = {
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                    .renderArea = VkRect2D{ {0, 0}, {this->swapchain.extent.width, this->swapchain.extent.height} },
+                    .layerCount = 1,
+                    .colorAttachmentCount = 1,
+                    .pColorAttachments = &color_attachment_info,
+                    .pDepthAttachment = &depth_attachment_info
+                };
+
+                vkCmdBeginRendering(frame->cmd, &render_info);
+            }
+
+
+            // Temporary
+
+            // Bind Material start
+            vkCmdBindPipeline(frame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->phong_pipeline.handle);
+
+            VkViewport viewport = {
+                .x = 0,
+                .y = 0,
+                .width = (float)this->swapchain.extent.width,
+                .height = (float)this->swapchain.extent.height,
+                .minDepth = 0.0f,
+                .maxDepth = 1.0f
+            };
+            VkRect2D scissor = {};
+            scissor.extent = this->swapchain.extent;
+            scissor.offset = VkOffset2D{0, 0};
+            vkCmdSetViewport(frame->cmd, 0, 1, &viewport);
+            vkCmdSetScissor(frame->cmd, 0, 1, &scissor);
+
+            VkDescriptorSet sets[] = { this->global_set, this->error_material.descriptor_set };
+            vkCmdBindDescriptorSets(frame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->phong_pipeline.layout, 0, 2, sets, 0, nullptr);
+
+            // Bind Material end
+    
+            glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+            //model_mat = glm::rotate(model_mat, glm::radians(angle), glm::vec3(1.0f, 1.0f, 1.0f));
+            //model_mat = glm::scale(model_mat, glm::vec3(0.25f));
+
+            PushConstants push_constants = 
+            {
+                .model = model_mat,
+                .norm_mat = glm::transpose(glm::inverse(model_mat))
+            };
+
+            vkCmdPushConstants(frame->cmd, this->phong_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push_constants);
+            
+            VkDeviceSize sizes[] = {0};
+            
+            // Draw stuff with particular material...
+            for(Mesh* mesh : draw_list)
+            {
+                if(mesh == nullptr) continue;
+
+                vkCmdBindVertexBuffers(frame->cmd, 0, 1, &mesh->vertices.handle, sizes);
+                vkCmdBindIndexBuffer(frame->cmd, mesh->indices.handle, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(frame->cmd, mesh->index_count, 1, 0, 0, 0);
+            }
+
+            // Horribly inefficient and a sin against computers but for now this is okay until something better is figured out
+            this->draw_list.clear();
 
             vkCmdEndRendering(frame->cmd);
 
             draw_gui();
+
+
+            // End Frame and actually submit the image for presentation
 
             // Transition image to presentable state
             Vulkan::Cmd::transition_image(frame->cmd, this->swapchain.images[frame->swapchain_index], {VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
                                     VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR}, 
                                     { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
 
-            // Then do the rest
             VK_CHECK(vkEndCommandBuffer(frame->cmd));
 
             // Submit the commands to the command buffer
@@ -629,22 +742,17 @@ namespace Twilight
             // Wait for fence to be signaled (if first loop fence is already signaled)
             VK_CHECK(vkWaitForFences(this->device, 1, &frame_data->render_fence, true, UINT64_MAX));
             // Here Fence is signaled
-
             // Reset Fence to unsignaled
             VK_CHECK(vkResetFences(this->device, 1, &frame_data->render_fence));
-
             // Acquire swapchain image. Swapchain_semaphore will be signaled once it has been acquired
             VK_CHECK(vkAcquireNextImageKHR(this->device, this->swapchain.handle, UINT64_MAX, frame_data->swapchain_semaphore, nullptr, &frame_context->swapchain_index));
-
-
             VK_CHECK(vkResetCommandBuffer(frame_context->cmd, 0));
-
             VkCommandBufferBeginInfo cmd_info = {
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                 .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
             };
-
             VK_CHECK(vkBeginCommandBuffer(frame_context->cmd, &cmd_info));
+
 
             // Get swapchain image, transition it to renderable format, start rendering...
             Vulkan::Cmd::transition_image(frame_context->cmd, this->swapchain.images[frame_context->swapchain_index], {VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
@@ -707,7 +815,7 @@ namespace Twilight
             vkCmdSetViewport(frame_context->cmd, 0, 1, &viewport);
             vkCmdSetScissor(frame_context->cmd, 0, 1, &scissor);
 
-            VkDescriptorSet sets[] = { this->global_set, this->error_material };
+            VkDescriptorSet sets[] = { this->global_set, this->error_material.descriptor_set };
             vkCmdBindDescriptorSets(frame_context->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->phong_pipeline.layout, 0, 2, sets, 0, nullptr);
     
             glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
@@ -779,6 +887,13 @@ namespace Twilight
             vkCmdBeginRendering(frame->cmd, &imgui_render_info);
             ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), frame->cmd);
             vkCmdEndRendering(frame->cmd);
+        }
+
+        void Renderer::destroy_material(Material& material)
+        {
+            Vulkan::destroy_buffer(this->allocator, material.buffer);
+            Vulkan::destroy_image(this->device, this->allocator, material.texture);
+            
         }
     }
 }

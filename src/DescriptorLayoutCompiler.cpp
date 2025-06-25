@@ -1,5 +1,5 @@
 #include "DescriptorLayoutCompiler.h"
-#include "vulkan_backend.h"
+#include "render_util.h"
 
 DescriptorLayoutCompiler::DescriptorLayoutCompiler()
 {

@@ -23,6 +23,7 @@ namespace Twilight
                 VkImageLayout old_layout;
                 VkImageLayout new_layout;
             };
+            bool load_shader_module(const char* path, VkDevice device, VkShaderModule* out_module);
 
             Buffer create_buffer(VmaAllocator allocator, uint64_t size, VkBufferUsageFlags usage, VmaMemoryUsage alloc_usage);
 

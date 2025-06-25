@@ -35,7 +35,8 @@ namespace Twilight
         {
             GraphicsPipeline* pipeline;
             VkDescriptorSet descriptor_set;
-            Buffer descriptor_buffer;     // This will be uploaded with all the data needed at startup / when the material is loaded from disk
+            Buffer buffer;     // This will be uploaded with all the data needed at startup / when the material is loaded from disk
+            Image texture;
         };
 
         enum MaterialTextureType : uint8_t
@@ -68,10 +69,10 @@ namespace Twilight
             uint32_t material_index;
         };
         
-        struct SceneNode
+        struct Model
         {
             std::vector<Mesh> meshes;
-            std::vector<SceneNode> children;
+            std::vector<Model> children;
             glm::mat4 local_transform;
         };
     }
