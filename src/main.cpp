@@ -94,12 +94,8 @@ int main()
     Twilight::Render::Renderer renderer;
     renderer.init(window, WIN_WIDTH, WIN_HEIGHT);
 
-    renderer.start_render();
-    renderer.present();
 
-    renderer.deinit();
-
-    VulkanContext context = init_vulkan(window, WIN_WIDTH, WIN_HEIGHT);
+    /*VulkanContext context = init_vulkan(window, WIN_WIDTH, WIN_HEIGHT);
     assert(validate_vulkan(context));
 
     IMGUI_CHECKVERSION();
@@ -294,12 +290,18 @@ int main()
         
         VkWriteDescriptorSet write_sets[] = { write_buffer_set, write_image_set };
         vkUpdateDescriptorSets(context.device, 2, write_sets, 0, nullptr);
-    }
+    }*/
 
     while(!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
-        double current_time = glfwGetTime();
+
+        Twilight::Render::FrameData frame = renderer.start_render();
+
+        
+
+        renderer.present();
+        /*double current_time = glfwGetTime();
         double delta = current_time - previous_time;
         previous_time = current_time;
 
@@ -308,7 +310,7 @@ int main()
         xdelta = current_x - previous_x;
         ydelta = current_y - previous_y;
         previous_x = current_x;
-        previous_y = current_y;
+        previous_y = current_y;*/
 
         /*GLFWgamepadstate state;
         if(glfwGetGamepadState(GLFW_JOYSTICK_1, &state))
@@ -325,7 +327,7 @@ int main()
             }
         */
 
-        ImGui_ImplVulkan_NewFrame();
+        /*ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         ImGui::ShowDemoWindow();
@@ -443,13 +445,13 @@ int main()
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 2, descriptor_sets, 0, nullptr);
 
         draw_node(cmd, cube_model);
-
+        */
         /*VkDeviceSize offsets[] = {0};
         vkCmdBindVertexBuffers(cmd, 0, 1, &vertex_buffer.handle, offsets);
         vkCmdBindIndexBuffer(cmd, index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
         vkCmdDrawIndexed(cmd, 36, 1, 0, 0, 0);*/
 
-        vkCmdEndRendering(cmd);
+        /*vkCmdEndRendering(cmd);
 
 
         VkRenderingAttachmentInfo imgui_attachment = {
@@ -481,10 +483,12 @@ int main()
                                     { VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS });
 
 
-        vulkan_frame_end(context);
+        vulkan_frame_end(context);*/
     }
 
-    vkDeviceWaitIdle(context.device);
+    renderer.deinit();
+
+    /*vkDeviceWaitIdle(context.device);
 
     free_node(context, cube_model);
 
@@ -503,7 +507,7 @@ int main()
     descriptor_allocator.destroy_pool(context.device);
     vkDestroySampler(context.device, sampler, nullptr);
 
-    destroy_vulkan(context);
+    destroy_vulkan(context);*/
 
     glfwDestroyWindow(window);
     glfwTerminate();

@@ -18,6 +18,12 @@ namespace Twilight
             uint32_t swapchain_index;
         };
 
+        struct GlobalUbo
+        {
+            glm::mat4 projection;
+            glm::mat4 view;
+        };
+
         class Renderer
         {
             private:
@@ -72,16 +78,17 @@ namespace Twilight
                 VkDescriptorSetLayout global_layout;
                 GraphicsPipeline phong_pipeline;
                 Image depth_buffer;
+                VkDescriptorSet global_set;
+                Buffer global_ubo;
+                VkDescriptorSet error_material;
+                Image error_texture;
+                VkSampler default_sampler;
                 // End Temporary
 
                 VkCommandPool transfer_pool;
                 VkCommandBuffer transfer_cmd;
                 VkFence transfer_fence;
 
-                std::vector<Buffer> buffers;
-                std::vector<Image> images;
-
-                
 
                 void init_vulkan();
                 void deinit_vulkan();

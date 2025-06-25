@@ -9,6 +9,10 @@
 #include "render_backend.h"
 #include <fstream>
 
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 static bool vulkan_load_shader_module(const char* path, VkDevice device, VkShaderModule* out_module)
 {
     std::ifstream file(path, std::ios::ate | std::ios::binary);
@@ -62,6 +66,7 @@ namespace Twilight
             create_swapchain(width, height);
             init_imgui();
             this->material_set_allocator.init_pools(this->device, 20, {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10}, {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10}});
+            this->general_set_allocator.init_pools(this->device, 20, {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 20}});
 
             {
                 VkCommandPoolCreateInfo pool_info = {
@@ -110,7 +115,7 @@ namespace Twilight
                 VkDescriptorSetLayoutBinding diffuse_tex = {
                     .binding = 0,
                     .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .descriptorCount = 0,
+                    .descriptorCount = 1,
                     .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
                 };
 
@@ -163,6 +168,73 @@ namespace Twilight
                 vkDestroyShaderModule(this->device, fragment_shader, nullptr);
             }
 
+            {
+                this->global_set = this->general_set_allocator.allocate(this->device, this->global_layout);
+
+                GlobalUbo global_ubo_cpu = {
+                    .projection = glm::perspective(glm::radians(45.0f), (float)width/ (float)height, 0.1f, 100.0f),
+                    .view = glm::lookAt(glm::vec3(0.0, 0.0, 5.0), glm::vec3(0.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0))
+                };
+
+                this->global_ubo = Vulkan::create_buffer(this->device, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, this->allocator, &global_ubo_cpu, sizeof(GlobalUbo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+
+                VkDescriptorBufferInfo buffer_info = {
+                    .buffer = this->global_ubo.handle,
+                    .offset = 0,
+                    .range = sizeof(GlobalUbo)
+                };
+
+                VkWriteDescriptorSet write_set = {
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = this->global_set,
+                    .dstBinding = 0,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .pBufferInfo = &buffer_info
+                };
+
+                vkUpdateDescriptorSets(this->device, 1, &write_set, 0, nullptr);
+            }
+
+            {
+                this->error_material = this->material_set_allocator.allocate(this->device, this->phong_material_layout);
+                std::vector<uint8_t> image_data = std::vector<uint8_t>(16);
+                for(int i = 0; i < 16; i += 4)
+                {
+                    image_data[i + 0] = 255;
+                    image_data[i + 1] = 0;
+                    image_data[i + 2] = 255;
+                    image_data[i + 3] = 255;
+                }
+
+                this->error_texture = Vulkan::create_image(this->device, this->allocator, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, image_data.data(), {2, 2, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT);
+
+                VkSamplerCreateInfo sampler_info = {
+                    .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+                    .magFilter = VK_FILTER_NEAREST,
+                    .minFilter = VK_FILTER_NEAREST
+                };
+
+                VK_CHECK(vkCreateSampler(this->device, &sampler_info, nullptr, &this->default_sampler));
+
+                VkDescriptorImageInfo image_info = {
+                    .sampler = this->default_sampler,
+                    .imageView = this->error_texture.view,
+                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                };
+
+                VkWriteDescriptorSet write_image_set = {
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = this->error_material,
+                    .dstBinding = 0,
+                    .descriptorCount = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .pImageInfo = &image_info
+                };
+
+                vkUpdateDescriptorSets(this->device, 1, &write_image_set, 0, nullptr);
+            }
+
 
             this->depth_buffer = Vulkan::create_image(this->device, this->allocator, {this->swapchain.extent.width, this->swapchain.extent.height, 1}, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
         }
@@ -170,7 +242,12 @@ namespace Twilight
         void Renderer::deinit()
         {
             vkDeviceWaitIdle(this->device);
+
             Vulkan::destroy_image(this->device, this->allocator, this->depth_buffer);
+            Vulkan::destroy_buffer(this->allocator, this->global_ubo);
+            Vulkan::destroy_image(this->device, this->allocator, this->error_texture);
+            vkDestroySampler(this->device, this->default_sampler, nullptr);
+
             vkDestroyFence(this->device, this->transfer_fence, nullptr);
             vkDestroyCommandPool(this->device, this->transfer_pool, nullptr);
             vkDestroyDescriptorSetLayout(this->device, this->phong_material_layout, nullptr);
@@ -179,6 +256,7 @@ namespace Twilight
             vkDestroyPipelineLayout(this->device, this->phong_pipeline.layout, nullptr);
 
 
+            general_set_allocator.destroy_pool(this->device);
             material_set_allocator.destroy_pool(this->device);
             deinit_imgui();
             destroy_swapchain();
@@ -473,6 +551,8 @@ namespace Twilight
 
             // Render all stuff that was submitted to renderer
 
+            vkCmdEndRendering(frame->cmd);
+
             draw_gui();
 
             // Transition image to presentable state
@@ -600,7 +680,13 @@ namespace Twilight
 
                 vkCmdBeginRendering(frame_context->cmd, &render_info);
             }
-            vkCmdEndRendering(frame_context->cmd);
+
+            vkCmdBindPipeline(frame_context->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->phong_pipeline.handle);
+
+            VkDescriptorSet sets[] = { this->global_set, this->error_material };
+
+            vkCmdBindDescriptorSets(frame_context->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->phong_pipeline.layout, 0, 2, sets, 0, nullptr);
+
 
             return *frame_context;
         }
@@ -634,7 +720,7 @@ namespace Twilight
             ImGui::NewFrame();
             ImGui::ShowDemoWindow();
             ImGui::Render();
-            
+
             FrameData* frame = &this->frames[this->frame_count];
             VkRenderingAttachmentInfo imgui_attachment = {
                 .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
