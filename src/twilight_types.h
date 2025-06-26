@@ -35,7 +35,7 @@ namespace Twilight
         {
             GraphicsPipeline* pipeline;
             VkDescriptorSet descriptor_set;
-            Buffer buffer;     // This will be uploaded with all the data needed at startup / when the material is loaded from disk
+            Buffer buffer;
             Image texture;
         };
 
@@ -86,5 +86,19 @@ namespace Twilight
             std::vector<Model> children;
             glm::mat4 local_transform;
         };
+
+        struct Light
+        {
+            glm::vec3 pos;
+            glm::vec3 color;
+        };
     }
+
+    struct SceneNode
+    {
+        Render::Model* model;
+        Render::Light* light;
+        std::vector<SceneNode> children;
+        glm::mat4 transform;
+    };
 }

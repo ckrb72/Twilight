@@ -16,10 +16,7 @@ void free_node(Twilight::Render::Renderer* renderer, Twilight::Render::Model& no
 {
     for(Twilight::Render::Mesh& mesh : node.meshes)
     {
-        renderer->destroy_buffer(mesh.vertices);
-        renderer->destroy_buffer(mesh.indices);
-        mesh.index_count = 0;
-        mesh.material_index = 0;
+        renderer->destroy_mesh(mesh);
     }
 
     for(Twilight::Render::Model& child : node.children)
@@ -39,22 +36,24 @@ int main()
 
     Twilight::AssetManager asset_manager;
     asset_manager.init(&renderer);
-    Twilight::Render::Model cube_model = asset_manager.load_model("../DamagedHelmet.glb");
+    Twilight::Render::Model little_guy = asset_manager.load_model("../little-guy.glb");
+    Twilight::Render::Model helmet = asset_manager.load_model("../DamagedHelmet.glb");
 
     /* Twilight::Render::Material material = renderer->create_material(material_stuff) */
     /* renderer->bind_material(material)*/
 
-    float angle = 0.0;
     while(!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
 
-        renderer.draw(cube_model);
+        renderer.draw(little_guy);
+        renderer.draw(helmet);
 
         renderer.present();
     }
     // Fix free_node up so it actually frees the buffers at the correct time
-    free_node(&renderer, cube_model);
+    free_node(&renderer, little_guy);
+    free_node(&renderer, helmet);
     renderer.deinit();
 
     glfwDestroyWindow(window);

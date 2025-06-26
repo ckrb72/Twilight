@@ -75,17 +75,23 @@ namespace Twilight
                 VkDescriptorPool imgui_pool;
 
 
-                // Temporary
-                VkDescriptorSetLayout phong_layout;
+                // Material stuff
                 VkDescriptorSetLayout global_layout;
+                VkDescriptorSetLayout phong_layout;
+                //VkDescriptorSetLayout pbr_layout;
+                
                 GraphicsPipeline phong_pipeline;
+                //GraphicsPipeline pbr_pipeline;
+                //GraphicsPipeline transparent_pipeline;
+
+                GraphicsPipeline* bound_pipeline;
+                
                 Image depth_buffer;
+
                 VkDescriptorSet global_set;
                 Buffer global_ubo;
 
-                Material error_material;
                 VkSampler default_sampler;
-                // End Temporary
 
                 VkCommandPool transfer_pool;
                 VkCommandBuffer transfer_cmd;
@@ -129,9 +135,14 @@ namespace Twilight
                 
                 Image create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage);
                 void destroy_image(Image& image);
+
+                Mesh create_mesh(const std::vector<Vertex>& vertices, const std::vector<unsigned int>& indices, uint32_t mat_id);
+                void destroy_mesh(Mesh& mesh);
                 
-                void load_material(std::vector<MaterialConstantBinding> constant_bindings, std::vector<MaterialTextureBinding> texture_bindings);
+                uint32_t load_material(std::vector<MaterialConstantBinding> constant_bindings, std::vector<MaterialTextureBinding> texture_bindings);
+                void add(const Light& light);
                 void draw(const Model& node);
+                void draw(const Mesh& mesh);
                 void present();
                 void deinit();
 

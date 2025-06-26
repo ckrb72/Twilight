@@ -40,17 +40,17 @@ namespace Twilight
         // Maybe just save all materials in some "global" array that is a private member of the AssetManager
         // Probably actually want to save the materials (or at least a pointer of them) in the Renderer class
 
-        uint32_t material_offset = load_materials(scene); 
+        std::vector<uint32_t> material_offsets = load_materials(scene); 
 
         // load_lights();
         // load_cameras();
 
-        Twilight::Render::Model root = load_node(scene->mRootNode, scene);
+        Twilight::Render::Model root = load_node(scene->mRootNode, scene, material_offsets);
 
         return root;
     }
 
-    Twilight::Render::Model AssetManager::load_node(aiNode* node, const aiScene* scene)
+    Twilight::Render::Model AssetManager::load_node(aiNode* node, const aiScene* scene, const std::vector<uint32_t>& material_offsets)
     {
         Twilight::Render::Model scene_node = {};
         scene_node.meshes.reserve(node->mNumMeshes);
@@ -73,19 +73,14 @@ namespace Twilight
                 load_indices(mesh, indices);
             }
 
-            Twilight::Render::Mesh node_mesh = {
-                .vertices = renderer->create_buffer(vertices.data(), vertices.size() * sizeof(Render::Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT),
-                .indices = renderer->create_buffer(indices.data(), indices.size() * sizeof(unsigned int), VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
-                .index_count = static_cast<uint32_t>(indices.size()),
-                .material_index = mesh->mMaterialIndex  /* Will probably need to change this up depending on how I store materials in the AssetManager*/
-            };
+            Twilight::Render::Mesh node_mesh = renderer->create_mesh(vertices, indices, material_offsets[mesh->mMaterialIndex]);
 
             scene_node.meshes.push_back(node_mesh);
         }
 
         for(int child_idx = 0; child_idx < node->mNumChildren; child_idx++)
         {
-            scene_node.children.push_back(load_node(node->mChildren[child_idx], scene));
+            scene_node.children.push_back(load_node(node->mChildren[child_idx], scene, material_offsets));
         }
         scene_node.local_transform = mat4x4_assimp_to_glm(node->mTransformation);
 
@@ -136,9 +131,11 @@ namespace Twilight
     // Loads materials from a given scene. The materials are referenced by meshes via their material index (i.e. mesh0 might have material at index 0 and mesh1 might have material at index 2)
     // returns the offset in the renderer's global material list. Add offset to the loaded mesh's material index to get the global index
     // i.e. If mesh0 has a material index of 2 and load_materials returns 3 then the global offset (the number that should be stored in the mesh's material_index member) should be 5
-    uint32_t AssetManager::load_materials(const aiScene* scene)
+    std::vector<uint32_t> AssetManager::load_materials(const aiScene* scene)
     {
         std::cout << "Material Count: " << scene->mNumMaterials << std::endl;
+        std::vector<uint32_t> material_offsets;
+        material_offsets.reserve(scene->mNumMaterials);
         for(int mat_index = 0; mat_index < scene->mNumMaterials; mat_index++)
         {
             aiMaterial* material = scene->mMaterials[mat_index];
@@ -153,13 +150,13 @@ namespace Twilight
                 int width, height;
                 unsigned char* image_data = stbi_load_from_memory((unsigned char*)texture->pcData, texture->mWidth, &width, &height, nullptr, 4);
 
-                renderer->load_material({}, {{image_data, static_cast<uint32_t>(width), static_cast<uint32_t>(height), Render::MaterialTextureType::DIFFUSE}});
+                material_offsets.push_back(renderer->load_material({}, {{image_data, static_cast<uint32_t>(width), static_cast<uint32_t>(height), Render::MaterialTextureType::DIFFUSE}}));
 
                 stbi_image_free(image_data);
             }
         }
 
-        return 0;
+        return material_offsets;
     }
 
     glm::mat4 AssetManager::mat4x4_assimp_to_glm(const aiMatrix4x4& mat)

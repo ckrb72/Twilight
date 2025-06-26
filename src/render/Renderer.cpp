@@ -125,7 +125,7 @@ namespace Twilight
 
                 VK_CHECK(vkCreateSampler(this->device, &sampler_info, nullptr, &this->default_sampler));
 
-                this->error_material = {
+                Material default_material = {
                     .pipeline = &this->phong_pipeline,
                     .descriptor_set = this->material_set_allocator.allocate(this->device, this->phong_layout),
                     .texture = Vulkan::create_image(this->device, this->allocator, {this->transfer_cmd, this->transfer_queue.handle, this->transfer_fence}, image_data.data(), {2, 2, 1}, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_SAMPLED_BIT)
@@ -133,13 +133,13 @@ namespace Twilight
 
                 VkDescriptorImageInfo image_info = {
                     .sampler = this->default_sampler,
-                    .imageView = this->error_material.texture.view,
+                    .imageView = default_material.texture.view,
                     .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                 };
 
                 VkWriteDescriptorSet write_image_set = {
                     .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = this->error_material.descriptor_set,
+                    .dstSet = default_material.descriptor_set,
                     .dstBinding = 0,
                     .descriptorCount = 1,
                     .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -147,6 +147,7 @@ namespace Twilight
                 };
 
                 vkUpdateDescriptorSets(this->device, 1, &write_image_set, 0, nullptr);
+                materials.push_back(default_material);
             }
 
 
@@ -164,7 +165,6 @@ namespace Twilight
 
             Vulkan::destroy_image(this->device, this->allocator, this->depth_buffer);
             Vulkan::destroy_buffer(this->allocator, this->global_ubo);
-            this->destroy_material(this->error_material);
             vkDestroySampler(this->device, this->default_sampler, nullptr);
             deinit_material_layouts();
 
@@ -486,7 +486,7 @@ namespace Twilight
 
         // Hardcoded for  "phong" model with one diffuse texture right now
         // Allow for different material types
-        void Renderer::load_material(std::vector<MaterialConstantBinding> constant_bindings, std::vector<MaterialTextureBinding> texture_bindings)
+        uint32_t Renderer::load_material(std::vector<MaterialConstantBinding> constant_bindings, std::vector<MaterialTextureBinding> texture_bindings)
         {
 
             /*
@@ -504,7 +504,7 @@ namespace Twilight
             if(texture_bindings.size() < 1 && texture_bindings[0].type != MaterialTextureType::DIFFUSE)
             {
                 std::cout << "TEST: first texture was not a diffuse" << std::endl;
-                return;
+                return 0;
             }
 
             assert(texture_bindings[0].data != nullptr);
@@ -538,6 +538,9 @@ namespace Twilight
 
             // TODO: Come up with id system so multiple models can be loaded
             this->materials.push_back({.pipeline = &this->phong_pipeline, .descriptor_set = mat_set, .buffer = {}, .texture = diffuse_texture});
+
+            // return index of material that was just added
+            return this->materials.size() - 1;
         }
 
         // TODO: Think about how to refactor this because not the best rn
@@ -561,21 +564,20 @@ namespace Twilight
 
             frame_begin(frame, internal_data);
 
+            this->bound_pipeline = nullptr;
+
             VkDeviceSize sizes[] = {0};
             
-            // Draw stuff with particular material...
+            // Draw everything
             for(Mesh* mesh : draw_list)
             {
                 if(mesh == nullptr) continue;
 
-                // Bind material (binds pipeline, sets viewport, binds associated descriptor sets)
-                // FIXME: Make this bind per material. 
-                // IMPORTANT: This should only rebind the pipeline when necessary
                 bind_material(this->materials[mesh->material_index]);
 
                 // if decide to use descriptors for this eventually then just bind the descriptor set while drawing and obviously update shaders
-                glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
-                model_mat = glm::rotate(model_mat, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+                glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f));
+                //model_mat = glm::rotate(model_mat, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
                 model_mat = glm::scale(model_mat, glm::vec3(1.0f));
 
                 PushConstants push_constants = 
@@ -659,21 +661,25 @@ namespace Twilight
         void Renderer::bind_material(const Material& material)
         {
             FrameData* frame = &this->frames[this->frame_count];
-            vkCmdBindPipeline(frame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipeline->handle);
+            if(this->bound_pipeline != material.pipeline)
+            {
+                vkCmdBindPipeline(frame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipeline->handle);
 
-            VkViewport viewport = {
-                .x = 0,
-                .y = 0,
-                .width = (float)this->swapchain.extent.width,
-                .height = (float)this->swapchain.extent.height,
-                .minDepth = 0.0f,
-                .maxDepth = 1.0f
-            };
-            VkRect2D scissor = {};
-            scissor.extent = this->swapchain.extent;
-            scissor.offset = VkOffset2D{0, 0};
-            vkCmdSetViewport(frame->cmd, 0, 1, &viewport);
-            vkCmdSetScissor(frame->cmd, 0, 1, &scissor);
+                VkViewport viewport = {
+                    .x = 0,
+                    .y = 0,
+                    .width = (float)this->swapchain.extent.width,
+                    .height = (float)this->swapchain.extent.height,
+                    .minDepth = 0.0f,
+                    .maxDepth = 1.0f
+                };
+                VkRect2D scissor = {};
+                scissor.extent = this->swapchain.extent;
+                scissor.offset = VkOffset2D{0, 0};
+                vkCmdSetViewport(frame->cmd, 0, 1, &viewport);
+                vkCmdSetScissor(frame->cmd, 0, 1, &scissor);
+                this->bound_pipeline = material.pipeline;
+            }
 
             VkDescriptorSet sets[] = { this->global_set, material.descriptor_set };
             vkCmdBindDescriptorSets(frame->cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, material.pipeline->layout, 0, 2, sets, 0, nullptr);
@@ -807,6 +813,24 @@ namespace Twilight
 
             VK_CHECK(vkQueuePresentKHR(this->graphics_queue.handle, &present_info));
             this->frame_count += (this->frame_count + 1) % FRAME_FLIGHT_COUNT;
+        }
+
+        Mesh Renderer::create_mesh(const std::vector<Vertex>& vertices, const std::vector<unsigned int>& indices, uint32_t mat_id)
+        {
+            return {
+                .vertices = create_buffer((void*)vertices.data(), vertices.size() * sizeof(Vertex), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT),
+                .indices = create_buffer((void*)indices.data(), indices.size() * sizeof(unsigned int), VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
+                .index_count = static_cast<uint32_t>(indices.size()),
+                .material_index = mat_id
+            };
+        }
+
+        void Renderer::destroy_mesh(Mesh& mesh)
+        {
+            destroy_buffer(mesh.vertices);
+            destroy_buffer(mesh.indices);
+            mesh.material_index = 0;
+            mesh.index_count = 0;
         }
     }
 }
