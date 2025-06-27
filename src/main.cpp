@@ -58,7 +58,7 @@ int main()
     asset_manager.init(&renderer);
     Twilight::Render::Model little_guy = asset_manager.load_model("../little-guy.glb");
     Twilight::Render::Model helmet = asset_manager.load_model("../DamagedHelmet.glb");
-
+    //Twilight::Render::Model mech = asset_manager.load_model("../rx-88.glb");
     /* Twilight::Render::Material material = renderer->create_material(material_stuff) */
     /* renderer->bind_material(material)*/
 
@@ -78,9 +78,9 @@ int main()
 
         glfwPollEvents();
 
-        helmet.local_transform = glm::rotate(glm::mat4(1.0f), glm::radians(10.0f * (float)delta), glm::vec3(0.0f, 1.0f, 0.0f)) * helmet.local_transform;
-        little_guy.local_transform = glm::rotate(glm::mat4(1.0f), glm::radians(50.0f * (float)delta), glm::vec3(0.0f, 1.0f, 0.0f)) * little_guy.local_transform;
-
+        //helmet.local_transform = glm::rotate(glm::mat4(1.0f), glm::radians(10.0f * (float)delta), glm::vec3(0.0f, 1.0f, 0.0f)) * helmet.local_transform;
+        //little_guy.local_transform = glm::rotate(glm::mat4(1.0f), glm::radians(50.0f * (float)delta), glm::vec3(0.0f, 1.0f, 0.0f)) * little_guy.local_transform;
+        //renderer.draw(mech);
         renderer.draw(little_guy);
         renderer.draw(helmet);
 
@@ -89,6 +89,7 @@ int main()
     // Fix free_node up so it actually frees the buffers at the correct time
     free_node(&renderer, little_guy);
     free_node(&renderer, helmet);
+    //free_node(&renderer, mech);
     renderer.deinit();
 
     glfwDestroyWindow(window);

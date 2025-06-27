@@ -41,7 +41,7 @@ namespace Twilight
 
         enum MaterialTextureType : uint8_t
         {
-            DIFFUSE,
+            BASE_COLOR,
             NORMAL,
             METALLIC,
             AMBIENT_OCCLUSION,

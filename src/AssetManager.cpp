@@ -140,17 +140,15 @@ namespace Twilight
         {
             aiMaterial* material = scene->mMaterials[mat_index];
 
-            std::cout << "Diffuse: " << material->GetTextureCount(aiTextureType_DIFFUSE) << std::endl;
-
             aiString tex_path;
-            material->GetTexture(aiTextureType_DIFFUSE, 0, &tex_path);
+            material->GetTexture(aiTextureType_BASE_COLOR, 0, &tex_path);
             const aiTexture* texture = scene->GetEmbeddedTexture(tex_path.C_Str());
             if(texture != nullptr)
             {
                 int width, height;
                 unsigned char* image_data = stbi_load_from_memory((unsigned char*)texture->pcData, texture->mWidth, &width, &height, nullptr, 4);
 
-                material_offsets.push_back(renderer->load_material({}, {{image_data, static_cast<uint32_t>(width), static_cast<uint32_t>(height), Render::MaterialTextureType::DIFFUSE}}));
+                material_offsets.push_back(renderer->load_material({}, {{image_data, static_cast<uint32_t>(width), static_cast<uint32_t>(height), Render::MaterialTextureType::BASE_COLOR}}));
 
                 stbi_image_free(image_data);
             }

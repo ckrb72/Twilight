@@ -6,6 +6,13 @@ class DescriptorAllocator
 {
     private:
         VkDescriptorPool current_pool;
+        std::vector<VkDescriptorPool> pools;
+
+        VkDevice device;
+        std::vector<VkDescriptorPoolSize> descriptor_types;
+        uint32_t pool_size;
+
+        VkDescriptorPool allocate_pool(VkDevice device, uint32_t pool_size, std::vector<VkDescriptorPoolSize> descriptor_types);
 
     public:
         DescriptorAllocator();

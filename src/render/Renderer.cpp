@@ -498,10 +498,10 @@ namespace Twilight
 
                 add_material_to_vector_or_something()
             */
-           
+
             VkDescriptorSet mat_set = material_set_allocator.allocate(this->device, this->phong_layout);
 
-            if(texture_bindings.size() < 1 && texture_bindings[0].type != MaterialTextureType::DIFFUSE)
+            if(texture_bindings.size() < 1 && texture_bindings[0].type != MaterialTextureType::BASE_COLOR)
             {
                 std::cout << "TEST: first texture was not a diffuse" << std::endl;
                 return 0;
@@ -546,7 +546,7 @@ namespace Twilight
         void Renderer::draw(const Model& node, const glm::mat4& parent_transform)
         {
             // Probably don't want to be doing these multiplications every frame since that is a lot of work.
-            // Maybe store the precomputed world transforms and then if a parent changes update all it's children            
+            // Maybe store the precomputed world transforms and then if a parent changes update all it's children
             glm::mat4 transform = parent_transform * node.local_transform;
             for(const Mesh& mesh : node.meshes)
             {
@@ -819,7 +819,18 @@ namespace Twilight
                 .pImageIndices = &frame->swapchain_index
             };
 
-            VK_CHECK(vkQueuePresentKHR(this->graphics_queue.handle, &present_info));
+            if(vkQueuePresentKHR(this->graphics_queue.handle, &present_info) == VK_ERROR_OUT_OF_DATE_KHR)
+            {
+                std::cout << "Swapchain out of date, recreating..." << std::endl;
+                destroy_swapchain();
+                int width, height;
+                glfwGetFramebufferSize(this->window, &width, &height);
+                create_swapchain(width, height);
+                destroy_image(this->depth_buffer);
+                this->depth_buffer = Vulkan::create_image(this->device, this->allocator, {this->swapchain.extent.width, this->swapchain.extent.height, 1}, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+                std::cout << "Swapchain recreated" << std::endl;
+            }
+
             this->frame_count += (this->frame_count + 1) % FRAME_FLIGHT_COUNT;
         }
 
