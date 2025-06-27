@@ -65,13 +65,10 @@ int main()
     //renderer.add_light({glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(1.0f, 1.0f, 1.0f)});
     //renderer.set_light_color(light_id, glm::vec3(1.0f, 0.0f, 0.0f));
 
-    print_matrices(little_guy);
-
     double delta = 0.0f;
     double previous_time = glfwGetTime();
 
-    helmet.local_transform = glm::rotate(glm::mat4(1.0f), glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f)) * helmet.local_transform;
-    little_guy.local_transform = glm::rotate(glm::mat4(1.0f), glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f)) * little_guy.local_transform;
+    float angle = 0.0f;
 
     while(!glfwWindowShouldClose(window))
     {
@@ -80,6 +77,9 @@ int main()
         previous_time = current_time;
 
         glfwPollEvents();
+
+        helmet.local_transform = glm::rotate(glm::mat4(1.0f), glm::radians(10.0f * (float)delta), glm::vec3(0.0f, 1.0f, 0.0f)) * helmet.local_transform;
+        little_guy.local_transform = glm::rotate(glm::mat4(1.0f), glm::radians(50.0f * (float)delta), glm::vec3(0.0f, 1.0f, 0.0f)) * little_guy.local_transform;
 
         renderer.draw(little_guy);
         renderer.draw(helmet);

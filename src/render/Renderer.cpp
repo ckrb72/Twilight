@@ -555,7 +555,7 @@ namespace Twilight
 
             for(const Model& child : node.children)
             {
-                draw(child);
+                draw(child, transform);
             }
         }
 
