@@ -118,10 +118,18 @@ namespace Twilight
                 void frame_end(FrameData* frame, InternalFrameData* internal_data);
 
                 void draw_gui();
+                void draw(const Model& node, const glm::mat4& parent_transform);
 
-                // Probably don't want to use raw pointers tbh but for now this is fine
-                std::vector<Mesh*> draw_list = std::vector<Mesh*>(256);
+
+                struct DrawData
+                {
+                    Mesh mesh;
+                    glm::mat4 transform;
+                };
+
+                std::vector<DrawData> draw_list;
                 std::vector<Material> materials;
+                std::vector<Light> lights;
 
             public:
 
@@ -140,7 +148,8 @@ namespace Twilight
                 void destroy_mesh(Mesh& mesh);
                 
                 uint32_t load_material(std::vector<MaterialConstantBinding> constant_bindings, std::vector<MaterialTextureBinding> texture_bindings);
-                void add(const Light& light);
+                uint32_t add_light(const Light& light);
+                //void remove_light(uint32_t id);
                 void draw(const Model& node);
                 void draw(const Mesh& mesh);
                 void present();

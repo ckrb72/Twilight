@@ -1,7 +1,9 @@
 #include <iostream>
 #include "render/Renderer.h"
 #include "AssetManager.h"
-
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
 /*
     Materials will have the texture, colors, etc. as usual but will also have a specific compiled pipeline (and layout)
     associted with them. So if you want to draw all the meshes with a certain material, you bind that pipeline and then do all the descriptors and drawing and stuff...
@@ -25,6 +27,24 @@ void free_node(Twilight::Render::Renderer* renderer, Twilight::Render::Model& no
     }
 }
 
+void print_matrices(const Twilight::Render::Model& model)
+{
+    for(int i = 0; i < 4; i++)
+    {
+        for(int j = 0; j < 4; j++)
+        {
+            std::cout << model.local_transform[i][j] << " ";
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::endl;
+
+    for(const Twilight::Render::Model& child : model.children)
+    {
+        print_matrices(child);
+    }
+}
+
 int main()
 {
     glfwInit();
@@ -42,8 +62,23 @@ int main()
     /* Twilight::Render::Material material = renderer->create_material(material_stuff) */
     /* renderer->bind_material(material)*/
 
+    //renderer.add_light({glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(1.0f, 1.0f, 1.0f)});
+    //renderer.set_light_color(light_id, glm::vec3(1.0f, 0.0f, 0.0f));
+
+    print_matrices(little_guy);
+
+    double delta = 0.0f;
+    double previous_time = glfwGetTime();
+
+    helmet.local_transform = glm::rotate(glm::mat4(1.0f), glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f)) * helmet.local_transform;
+    little_guy.local_transform = glm::rotate(glm::mat4(1.0f), glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f)) * little_guy.local_transform;
+
     while(!glfwWindowShouldClose(window))
     {
+        double current_time = glfwGetTime();
+        delta = current_time - previous_time;
+        previous_time = current_time;
+
         glfwPollEvents();
 
         renderer.draw(little_guy);

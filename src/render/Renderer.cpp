@@ -543,18 +543,26 @@ namespace Twilight
             return this->materials.size() - 1;
         }
 
-        // TODO: Think about how to refactor this because not the best rn
-        void Renderer::draw(const Model& node)
+        void Renderer::draw(const Model& node, const glm::mat4& parent_transform)
         {
+            // Probably don't want to be doing these multiplications every frame since that is a lot of work.
+            // Maybe store the precomputed world transforms and then if a parent changes update all it's children            
+            glm::mat4 transform = parent_transform * node.local_transform;
             for(const Mesh& mesh : node.meshes)
             {
-                this->draw_list.push_back(&(Mesh&)mesh);
+                this->draw_list.push_back({mesh, transform});
             }
 
             for(const Model& child : node.children)
             {
                 draw(child);
             }
+        }
+
+        // TODO: Think about how to refactor this because not the best rn
+        void Renderer::draw(const Model& node)
+        {
+            draw(node, glm::mat4(1.0f));
         }
 
         void Renderer::present()
@@ -566,31 +574,31 @@ namespace Twilight
 
             this->bound_pipeline = nullptr;
 
+            // Bind lights
+            /*
+                The descriptor set will already be made and the data will already be populated so all you need to do is bind the descriptor set when binding the pipeline.
+                When you add a light to the renderer it will update the buffers for you and all of that so no need to worry about that here... just bind the descriptor set at the right time
+            */
+
             VkDeviceSize sizes[] = {0};
             
             // Draw everything
-            for(Mesh* mesh : draw_list)
+            for(const DrawData& draw_data : draw_list)
             {
-                if(mesh == nullptr) continue;
-
-                bind_material(this->materials[mesh->material_index]);
+                bind_material(this->materials[draw_data.mesh.material_index]);
 
                 // if decide to use descriptors for this eventually then just bind the descriptor set while drawing and obviously update shaders
-                glm::mat4 model_mat = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f));
-                //model_mat = glm::rotate(model_mat, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-                model_mat = glm::scale(model_mat, glm::vec3(1.0f));
-
                 PushConstants push_constants = 
                 {
-                    .model = model_mat,
-                    .norm_mat = glm::transpose(glm::inverse(model_mat))
+                    .model = draw_data.transform,
+                    .norm_mat = glm::transpose(draw_data.transform)
                 };
 
                 vkCmdPushConstants(frame->cmd, this->phong_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push_constants);
 
-                vkCmdBindVertexBuffers(frame->cmd, 0, 1, &mesh->vertices.handle, sizes);
-                vkCmdBindIndexBuffer(frame->cmd, mesh->indices.handle, 0, VK_INDEX_TYPE_UINT32);
-                vkCmdDrawIndexed(frame->cmd, mesh->index_count, 1, 0, 0, 0);
+                vkCmdBindVertexBuffers(frame->cmd, 0, 1, &draw_data.mesh.vertices.handle, sizes);
+                vkCmdBindIndexBuffer(frame->cmd, draw_data.mesh.indices.handle, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(frame->cmd, draw_data.mesh.index_count, 1, 0, 0, 0);
             }
 
             // Horribly inefficient and a sin against computers but for now this is okay until something better is figured out

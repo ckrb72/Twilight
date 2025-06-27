@@ -8,6 +8,14 @@ layout(location = 0) out vec4 out_color;
 
 layout(set = 1, binding = 0) uniform sampler2D tex;
 
+struct Light
+{
+    vec3 pos;
+    vec3 color;
+};
+
+
+Light light;
 /*layout(set = 2, binding = 0) uniform lights
 {
     // light stuff
