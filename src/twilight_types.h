@@ -82,9 +82,11 @@ namespace Twilight
         
         struct Model
         {
+            // Probably a good place to use std::shared_ptr or something for the meshes because they will destroy the stack eventually
             std::vector<Mesh> meshes;
             std::vector<Model> children;
             glm::mat4 local_transform;
+            glm::mat4 world_matrix;
         };
 
         struct Light

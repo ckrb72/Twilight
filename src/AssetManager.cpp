@@ -37,15 +37,13 @@ namespace Twilight
             return {};
         }
 
-        // Maybe just save all materials in some "global" array that is a private member of the AssetManager
-        // Probably actually want to save the materials (or at least a pointer of them) in the Renderer class
-
-        std::vector<uint32_t> material_offsets = load_materials(scene); 
+        std::vector<uint32_t> material_offsets = load_materials(scene);
 
         // load_lights();
         // load_cameras();
 
         Twilight::Render::Model root = load_node(scene->mRootNode, scene, material_offsets);
+        Twilight::Render::set_transform(root, glm::mat4(1.0f));
 
         return root;
     }

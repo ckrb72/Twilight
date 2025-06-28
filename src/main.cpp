@@ -1,5 +1,6 @@
 #include <iostream>
 #include "render/Renderer.h"
+#include "physics/PhysicsWorld.h"
 #include "AssetManager.h"
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
@@ -9,6 +10,15 @@
     associted with them. So if you want to draw all the meshes with a certain material, you bind that pipeline and then do all the descriptors and drawing and stuff...
     Internally, the renderer will holds lists of objects with their associated materials for drawing. When you ask to draw a node, the respective meshes are places in the correct material
     lists and then when rendering actually occurs all those lists are renderered one by one
+*/
+
+/*
+    TODO: 
+        PBR Materials
+        Scene graph
+        Model rework
+        Camera movement
+        Jolt integration
 */
 
 const int WIN_WIDTH = 1920, WIN_HEIGHT = 1080;
@@ -58,7 +68,10 @@ int main()
     asset_manager.init(&renderer);
     Twilight::Render::Model little_guy = asset_manager.load_model("../little-guy.glb");
     Twilight::Render::Model helmet = asset_manager.load_model("../DamagedHelmet.glb");
-    //Twilight::Render::Model mech = asset_manager.load_model("../rx-88.glb");
+    Twilight::Render::Model mech = asset_manager.load_model("../assets/halo_infinite_oddball.glb");
+
+    Twilight::Physics::PhysicsWorld world;
+    world.init();
     /* Twilight::Render::Material material = renderer->create_material(material_stuff) */
     /* renderer->bind_material(material)*/
 
@@ -78,8 +91,9 @@ int main()
 
         glfwPollEvents();
 
-        //helmet.local_transform = glm::rotate(glm::mat4(1.0f), glm::radians(10.0f * (float)delta), glm::vec3(0.0f, 1.0f, 0.0f)) * helmet.local_transform;
-        //little_guy.local_transform = glm::rotate(glm::mat4(1.0f), glm::radians(50.0f * (float)delta), glm::vec3(0.0f, 1.0f, 0.0f)) * little_guy.local_transform;
+        Twilight::Render::set_transform(little_guy, glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(0.0f, 1.0f, 0.0f)) * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)));
+        angle += 10.0f * delta;
+        
         //renderer.draw(mech);
         renderer.draw(little_guy);
         renderer.draw(helmet);
@@ -89,7 +103,7 @@ int main()
     // Fix free_node up so it actually frees the buffers at the correct time
     free_node(&renderer, little_guy);
     free_node(&renderer, helmet);
-    //free_node(&renderer, mech);
+    free_node(&renderer, mech);
     renderer.deinit();
 
     glfwDestroyWindow(window);

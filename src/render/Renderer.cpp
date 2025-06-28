@@ -25,6 +25,14 @@ namespace Twilight
 {
     namespace Render
     {
+        void set_transform(Model& model, const glm::mat4& transform)
+        {
+            model.world_matrix = transform * model.local_transform;
+            for(Model& child : model.children)
+            {
+                set_transform(child, model.world_matrix);
+            }
+        }
 
         Renderer::Renderer()
         {
@@ -555,14 +563,22 @@ namespace Twilight
 
             for(const Model& child : node.children)
             {
-                draw(child, transform);
+                draw(child, glm::mat4(transform));
             }
         }
 
         // TODO: Think about how to refactor this because not the best rn
         void Renderer::draw(const Model& node)
         {
-            draw(node, glm::mat4(1.0f));
+            for(const Mesh& mesh : node.meshes)
+            {
+                this->draw_list.push_back({mesh, node.world_matrix});
+            }
+
+            for(const Model& child : node.children)
+            {
+                draw(child);
+            }
         }
 
         void Renderer::present()

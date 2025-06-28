@@ -13,11 +13,7 @@ namespace Twilight
     namespace Render
     {
 
-        struct GlobalUbo
-        {
-            glm::mat4 projection;
-            glm::mat4 view;
-        };
+        void set_transform(Model& model, const glm::mat4& transform);
 
         class Renderer
         {
@@ -96,7 +92,12 @@ namespace Twilight
                 VkCommandPool transfer_pool;
                 VkCommandBuffer transfer_cmd;
                 VkFence transfer_fence;
-
+                
+                struct GlobalUbo
+                {
+                    glm::mat4 projection;
+                    glm::mat4 view;
+                };
 
                 void init_vulkan();
                 void deinit_vulkan();
