@@ -78,6 +78,13 @@ int main()
     //renderer.add_light({glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(1.0f, 1.0f, 1.0f)});
     //renderer.set_light_color(light_id, glm::vec3(1.0f, 0.0f, 0.0f));
 
+
+    // Create floor in physics world
+
+    // Create sphere collider for little guy
+
+    // each frame move little guy to the transform of the sphere collider
+
     double delta = 0.0f;
     double previous_time = glfwGetTime();
 
@@ -91,6 +98,8 @@ int main()
 
         glfwPollEvents();
 
+        world.update(delta);
+
         Twilight::Render::set_transform(little_guy, glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(0.0f, 1.0f, 0.0f)) * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)));
         angle += 10.0f * delta;
         
@@ -100,7 +109,9 @@ int main()
 
         renderer.present();
     }
+    world.deinit();
     // Fix free_node up so it actually frees the buffers at the correct time
+    renderer.wait();
     free_node(&renderer, little_guy);
     free_node(&renderer, helmet);
     free_node(&renderer, mech);

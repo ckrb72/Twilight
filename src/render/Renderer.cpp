@@ -162,6 +162,11 @@ namespace Twilight
             this->depth_buffer = Vulkan::create_image(this->device, this->allocator, {this->swapchain.extent.width, this->swapchain.extent.height, 1}, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
         }
 
+        void Renderer::wait()
+        {
+            vkDeviceWaitIdle(this->device);
+        }
+
         void Renderer::deinit()
         {
             vkDeviceWaitIdle(this->device);
@@ -842,6 +847,7 @@ namespace Twilight
                 int width, height;
                 glfwGetFramebufferSize(this->window, &width, &height);
                 create_swapchain(width, height);
+                wait();
                 destroy_image(this->depth_buffer);
                 this->depth_buffer = Vulkan::create_image(this->device, this->allocator, {this->swapchain.extent.width, this->swapchain.extent.height, 1}, VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
                 std::cout << "Swapchain recreated" << std::endl;

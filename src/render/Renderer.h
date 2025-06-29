@@ -154,10 +154,8 @@ namespace Twilight
                 void draw(const Model& node);
                 void draw(const Mesh& mesh);
                 void present();
+                void wait();
                 void deinit();
-
-                /* Temporary */
-                FrameData start_render();
         };
     }
 }
