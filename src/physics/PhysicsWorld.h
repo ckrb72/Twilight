@@ -167,6 +167,10 @@ namespace Twilight
                 MyContactListener contact_listener;
                 MyBodyActivationListener body_activation_listener;
                 JPH::BodyInterface* body_interface;
+				
+				// Temporary
+				JPH::BodyID floor_id;
+				JPH::BodyID box_id;
 
                 const float tick_rate = 1.0f / 60.0f;
                 double time = 0.0;
@@ -178,6 +182,9 @@ namespace Twilight
                 ~PhysicsWorld();
 
                 void init();
+				JPH::BodyID add();
+
+				JPH::Mat44 get_transform_test();
                 void update(double delta);
                 void deinit();
         };

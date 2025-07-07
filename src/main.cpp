@@ -55,6 +55,21 @@ void print_matrices(const Twilight::Render::Model& model)
     }
 }
 
+glm::mat4 jph_to_glm(JPH::Mat44& mat)
+{
+    glm::mat4 out_mat = {};
+    for(int c = 0; c < 4; c++)
+    {
+        JPH::Vec4 col = mat.GetColumn4(c);
+        out_mat[c][0] = col[0];
+        out_mat[c][1] = col[1];
+        out_mat[c][2] = col[2];
+        out_mat[c][3] = col[3];
+    }
+
+    return out_mat;
+}
+
 int main()
 {
     glfwInit();
@@ -97,10 +112,14 @@ int main()
         previous_time = current_time;
 
         glfwPollEvents();
-
+        
         world.update(delta);
 
-        Twilight::Render::set_transform(little_guy, glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(0.0f, 1.0f, 0.0f)) * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.5f, 0.0f)));
+        JPH::Mat44 box_transform_jph = world.get_transform_test();
+
+        glm::mat4 box_transform = jph_to_glm(box_transform_jph);
+
+        Twilight::Render::set_transform(little_guy, box_transform);
         angle += 10.0f * delta;
         
         //renderer.draw(mech);

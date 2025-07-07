@@ -53,17 +53,18 @@ namespace Twilight
 	        this->physics_system.SetContactListener(&contact_listener);
             this->body_interface = &physics_system.GetBodyInterface();
 
-			
-
-            /*JPH::BoxShapeSettings floor_shape_settings(JPH::Vec3(100.0f, 1.0f, 100.0f));
-	        floor_shape_settings.SetEmbedded();
-
-            JPH::ShapeSettings::ShapeResult floor_shape_result = floor_shape_settings.Create();
-	        JPH::ShapeRefC floor_shape = floor_shape_result.Get();
-            JPH::BodyCreationSettings floor_settings(floor_shape, JPH::RVec3(0.0, -1.0, 0.0), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Layers::NON_MOVING);
-            JPH::Body *floor = body_interface->CreateBody(floor_settings);
+			JPH::Body* floor = this->body_interface->CreateBody(JPH::BodyCreationSettings(new JPH::BoxShape(JPH::RVec3(100.0f, 1.0f, 100.0f)), JPH::RVec3(0, -5.0, 0), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Layers::MOVING));
             this->body_interface->AddBody(floor->GetID(), JPH::EActivation::DontActivate);
-            JPH::BodyCreationSettings sphere_settings(new JPH::SphereShape(0.5f), JPH::RVec3(0.0, 2.0, 0.0), JPH::Quat::sIdentity(), JPH::EMotionType::Dynamic, Layers::MOVING);
+			this->floor_id = floor->GetID();
+
+			JPH::Body* box = this->body_interface->CreateBody(JPH::BodyCreationSettings(new JPH::BoxShape(JPH::RVec3(1.0f, 1.0f, 1.0f)), JPH::RVec3(0.0f, 10.0f, 0.0f), JPH::Quat::sIdentity(), JPH::EMotionType::Dynamic, Layers::MOVING));
+			this->body_interface->AddBody(box->GetID(), JPH::EActivation::Activate);
+			this->box_id = box->GetID();
+
+			this->body_interface->SetLinearVelocity(this->box_id, JPH::Vec3(0.0f, -2.0f, 0.0f));
+            this->physics_system.OptimizeBroadPhase();
+            
+			/*JPH::BodyCreationSettings sphere_settings(new JPH::SphereShape(0.5f), JPH::RVec3(0.0, 2.0, 0.0), JPH::Quat::sIdentity(), JPH::EMotionType::Dynamic, Layers::MOVING);
 	        JPH::BodyID sphere_id = body_interface->CreateAndAddBody(sphere_settings, JPH::EActivation::Activate);
             this->body_interface->SetLinearVelocity(sphere_id, JPH::Vec3(0.0f, -5.0f, 0.0f));
             this->physics_system.OptimizeBroadPhase();
@@ -104,12 +105,24 @@ namespace Twilight
 			{
 	        	// If you take larger steps than 1 / 60th of a second you need to do multiple collision steps in order to keep the simulation stable. Do 1 collision step per 1 / 60th of a second (round up).
 	        	const int COLLISION_STEPS = 1;
+	        	JPH::RVec3 position = body_interface->GetCenterOfMassPosition(this->box_id);
+	        	JPH::Vec3 velocity = body_interface->GetLinearVelocity(this->box_id);
+
+				JPH::Mat44 transform = body_interface->GetWorldTransform(this->box_id);
+				//std::cout << transform << std::endl;
+
+				//std::cout << "Step " << this->time << ": Position = (" << position.GetX() << ", " << position.GetY() << ", " << position.GetZ() << "), Velocity = (" << velocity.GetX() << ", " << velocity.GetY() << ", " << velocity.GetZ() << ")" << std::endl;
         
 	        	// Step the world
 	        	physics_system.Update(this->tick_rate, COLLISION_STEPS, this->temp_allocator, this->job_system);
 				this->time = 0.0;
 			}
 			this->time += delta;
+		}
+
+		JPH::Mat44 PhysicsWorld::get_transform_test()
+		{
+			return this->body_interface->GetWorldTransform(this->box_id);
 		}
 
         void PhysicsWorld::deinit()
