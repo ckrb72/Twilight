@@ -119,7 +119,7 @@ int main()
 
         glm::mat4 box_transform = jph_to_glm(box_transform_jph);
 
-        Twilight::Render::set_transform(little_guy, box_transform);
+        Twilight::Render::SetTransform(little_guy, box_transform);
         angle += 10.0f * delta;
         
         //renderer.draw(mech);

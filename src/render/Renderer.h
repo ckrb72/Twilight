@@ -13,7 +13,7 @@ namespace Twilight
     namespace Render
     {
 
-        void set_transform(Model& model, const glm::mat4& transform);
+        void SetTransform(Model& model, const glm::mat4& transform);
 
         class Renderer
         {

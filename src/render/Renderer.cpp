@@ -25,12 +25,12 @@ namespace Twilight
 {
     namespace Render
     {
-        void set_transform(Model& model, const glm::mat4& transform)
+        void SetTransform(Model& model, const glm::mat4& transform)
         {
             model.world_matrix = transform * model.local_transform;
             for(Model& child : model.children)
             {
-                set_transform(child, model.world_matrix);
+                SetTransform(child, model.world_matrix);
             }
         }
 

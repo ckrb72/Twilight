@@ -3,6 +3,7 @@
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include "render/vma.h"
+#include <memory>
 
 namespace Twilight
 {
@@ -96,10 +97,10 @@ namespace Twilight
         };
     }
 
+    // Very basic node right now that just has meshes because I will be changing up the scene graph later
     struct SceneNode
     {
-        Render::Model* model;
-        Render::Light* light;
+        std::shared_ptr<Render::Mesh> mesh;
         std::vector<SceneNode> children;
         glm::mat4 transform;
     };

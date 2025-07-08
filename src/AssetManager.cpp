@@ -25,7 +25,7 @@ namespace Twilight
         this->renderer = renderer;
     }
 
-    Twilight::Render::Model AssetManager::load_model(const std::string& path)
+    Render::Model AssetManager::load_model(const std::string& path)
     {
         // FIXME: hacky way to do this for now
 
@@ -42,15 +42,15 @@ namespace Twilight
         // load_lights();
         // load_cameras();
 
-        Twilight::Render::Model root = load_node(scene->mRootNode, scene, material_offsets);
-        Twilight::Render::set_transform(root, glm::mat4(1.0f));
+        Render::Model root = load_node(scene->mRootNode, scene, material_offsets);
+        Render::SetTransform(root, glm::mat4(1.0f));
 
         return root;
     }
 
-    Twilight::Render::Model AssetManager::load_node(aiNode* node, const aiScene* scene, const std::vector<uint32_t>& material_offsets)
+    Render::Model AssetManager::load_node(aiNode* node, const aiScene* scene, const std::vector<uint32_t>& material_offsets)
     {
-        Twilight::Render::Model scene_node = {};
+        Render::Model scene_node = {};
         scene_node.meshes.reserve(node->mNumMeshes);
         scene_node.children.reserve(node->mNumChildren);
 
@@ -71,7 +71,7 @@ namespace Twilight
                 load_indices(mesh, indices);
             }
 
-            Twilight::Render::Mesh node_mesh = renderer->create_mesh(vertices, indices, material_offsets[mesh->mMaterialIndex]);
+            Render::Mesh node_mesh = renderer->create_mesh(vertices, indices, material_offsets[mesh->mMaterialIndex]);
 
             scene_node.meshes.push_back(node_mesh);
         }
