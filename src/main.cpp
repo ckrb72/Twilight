@@ -24,32 +24,32 @@
 const int WIN_WIDTH = 1920, WIN_HEIGHT = 1080;
 
 // Temporary
-void free_node(Twilight::Render::Renderer* renderer, Twilight::Render::Model& node)
+void free_node(Twilight::Render::Renderer* renderer, Twilight::SceneNode& node)
 {
     for(Twilight::Render::Mesh& mesh : node.meshes)
     {
         renderer->destroy_mesh(mesh);
     }
 
-    for(Twilight::Render::Model& child : node.children)
+    for(Twilight::SceneNode& child : node.children)
     {
         free_node(renderer, child);
     }
 }
 
-void print_matrices(const Twilight::Render::Model& model)
+void print_matrices(const Twilight::SceneNode& node)
 {
     for(int i = 0; i < 4; i++)
     {
         for(int j = 0; j < 4; j++)
         {
-            std::cout << model.local_transform[i][j] << " ";
+            std::cout << node.local_transform[i][j] << " ";
         }
         std::cout << std::endl;
     }
     std::cout << std::endl;
 
-    for(const Twilight::Render::Model& child : model.children)
+    for(const Twilight::SceneNode& child : node.children)
     {
         print_matrices(child);
     }
@@ -81,9 +81,9 @@ int main()
 
     Twilight::AssetManager asset_manager;
     asset_manager.init(&renderer);
-    Twilight::Render::Model little_guy = asset_manager.load_model("../little-guy.glb");
-    Twilight::Render::Model helmet = asset_manager.load_model("../DamagedHelmet.glb");
-    Twilight::Render::Model mech = asset_manager.load_model("../assets/halo_infinite_oddball.glb");
+    Twilight::SceneNode little_guy = asset_manager.load_model("../little-guy.glb");
+    Twilight::SceneNode helmet = asset_manager.load_model("../DamagedHelmet.glb");
+    Twilight::SceneNode mech = asset_manager.load_model("../assets/halo_infinite_oddball.glb");
 
     Twilight::Physics::PhysicsWorld world;
     world.init();
@@ -105,6 +105,8 @@ int main()
 
     float angle = 0.0f;
 
+    Twilight::Scene::AppendChild(little_guy, helmet);
+
     while(!glfwWindowShouldClose(window))
     {
         double current_time = glfwGetTime();
@@ -119,7 +121,7 @@ int main()
 
         glm::mat4 box_transform = jph_to_glm(box_transform_jph);
 
-        Twilight::Render::SetTransform(little_guy, box_transform);
+        Twilight::Scene::SetTransform(little_guy, box_transform);
         angle += 10.0f * delta;
         
         //renderer.draw(mech);

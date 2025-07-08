@@ -5,6 +5,7 @@
 #include "DescriptorAllocator.h"
 #include "vma.h"
 #include "../twilight_types.h"
+#include "../Scene.h"
 
 #define FRAME_FLIGHT_COUNT 2
 
@@ -12,8 +13,6 @@ namespace Twilight
 {
     namespace Render
     {
-
-        void SetTransform(Model& model, const glm::mat4& transform);
 
         class Renderer
         {
@@ -119,7 +118,6 @@ namespace Twilight
                 void frame_end(FrameData* frame, InternalFrameData* internal_data);
 
                 void draw_gui();
-                void draw(const Model& node, const glm::mat4& parent_transform);
 
 
                 struct DrawData
@@ -151,7 +149,7 @@ namespace Twilight
                 uint32_t load_material(std::vector<MaterialConstantBinding> constant_bindings, std::vector<MaterialTextureBinding> texture_bindings);
                 uint32_t add_light(const Light& light);
                 //void remove_light(uint32_t id);
-                void draw(const Model& node);
+                void draw(const SceneNode& node);
                 void draw(const Mesh& mesh);
                 void present();
                 void wait();

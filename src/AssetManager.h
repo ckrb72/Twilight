@@ -7,6 +7,7 @@
 #include <glm/glm.hpp>
 #include "twilight_types.h"
 #include "render/Renderer.h"
+#include "Scene.h"
 
 namespace Twilight
 {
@@ -15,9 +16,9 @@ namespace Twilight
     {
         private:
             Assimp::Importer importer;
-            Twilight::Render::Renderer* renderer = nullptr;
+            Render::Renderer* renderer = nullptr;
 
-            Twilight::Render::Model load_node(aiNode* node, const aiScene* scene, const std::vector<uint32_t>& material_offsets);
+            SceneNode load_node(aiNode* node, const aiScene* scene, const std::vector<uint32_t>& material_offsets, SceneNode& parent);
             void load_vertices(const aiMesh* mesh, std::vector<Render::Vertex>& vertices);
             void load_indices(const aiMesh* mesh, std::vector<unsigned int>& indices);
             std::vector<uint32_t> load_materials(const aiScene* scene);
@@ -26,8 +27,8 @@ namespace Twilight
         public:
             AssetManager();
             ~AssetManager();
-            void init(Twilight::Render::Renderer* renderer);
-            Twilight::Render::Model load_model(const std::string& path);
+            void init(Render::Renderer* renderer);
+            SceneNode load_model(const std::string& path);
     };
 
 }

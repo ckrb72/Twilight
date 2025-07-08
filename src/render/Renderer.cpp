@@ -25,15 +25,6 @@ namespace Twilight
 {
     namespace Render
     {
-        void SetTransform(Model& model, const glm::mat4& transform)
-        {
-            model.world_matrix = transform * model.local_transform;
-            for(Model& child : model.children)
-            {
-                SetTransform(child, model.world_matrix);
-            }
-        }
-
         Renderer::Renderer()
         {
 
@@ -556,31 +547,16 @@ namespace Twilight
             return this->materials.size() - 1;
         }
 
-        void Renderer::draw(const Model& node, const glm::mat4& parent_transform)
-        {
-            // Probably don't want to be doing these multiplications every frame since that is a lot of work.
-            // Maybe store the precomputed world transforms and then if a parent changes update all it's children
-            glm::mat4 transform = parent_transform * node.local_transform;
-            for(const Mesh& mesh : node.meshes)
-            {
-                this->draw_list.push_back({mesh, transform});
-            }
-
-            for(const Model& child : node.children)
-            {
-                draw(child, glm::mat4(transform));
-            }
-        }
 
         // TODO: Think about how to refactor this because not the best rn
-        void Renderer::draw(const Model& node)
+        void Renderer::draw(const SceneNode& node)
         {
             for(const Mesh& mesh : node.meshes)
             {
                 this->draw_list.push_back({mesh, node.world_matrix});
             }
 
-            for(const Model& child : node.children)
+            for(const SceneNode& child : node.children)
             {
                 draw(child);
             }

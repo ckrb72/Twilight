@@ -25,7 +25,7 @@ namespace Twilight
         this->renderer = renderer;
     }
 
-    Render::Model AssetManager::load_model(const std::string& path)
+    SceneNode AssetManager::load_model(const std::string& path)
     {
         // FIXME: hacky way to do this for now
 
@@ -41,19 +41,22 @@ namespace Twilight
 
         // load_lights();
         // load_cameras();
+        SceneNode default_orientation = {
+            .local_transform = glm::mat4(1.0f),
+            .world_matrix = glm::mat4(1.0f)
+        };
 
-        Render::Model root = load_node(scene->mRootNode, scene, material_offsets);
-        Render::SetTransform(root, glm::mat4(1.0f));
+        SceneNode root = load_node(scene->mRootNode, scene, material_offsets, default_orientation);
 
         return root;
     }
 
-    Render::Model AssetManager::load_node(aiNode* node, const aiScene* scene, const std::vector<uint32_t>& material_offsets)
+    SceneNode AssetManager::load_node(aiNode* node, const aiScene* scene, const std::vector<uint32_t>& material_offsets, SceneNode& parent)
     {
-        Render::Model scene_node = {};
-        scene_node.meshes.reserve(node->mNumMeshes);
-        scene_node.children.reserve(node->mNumChildren);
-
+        SceneNode scene_node = {};
+        scene_node.local_transform = mat4x4_assimp_to_glm(node->mTransformation);
+        scene_node.world_matrix = parent.world_matrix * scene_node.local_transform;
+        
         for(int mesh_idx = 0; mesh_idx < node->mNumMeshes; mesh_idx++)
         {
             aiMesh* mesh = scene->mMeshes[node->mMeshes[mesh_idx]];
@@ -78,9 +81,8 @@ namespace Twilight
 
         for(int child_idx = 0; child_idx < node->mNumChildren; child_idx++)
         {
-            scene_node.children.push_back(load_node(node->mChildren[child_idx], scene, material_offsets));
+            scene_node.children.push_back(load_node(node->mChildren[child_idx], scene, material_offsets, scene_node));
         }
-        scene_node.local_transform = mat4x4_assimp_to_glm(node->mTransformation);
 
         return scene_node;
     }

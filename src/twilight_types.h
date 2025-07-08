@@ -81,14 +81,6 @@ namespace Twilight
             uint32_t material_index;
         };
         
-        struct Model
-        {
-            // Probably a good place to use std::shared_ptr or something for the meshes because they will destroy the stack eventually
-            std::vector<Mesh> meshes;
-            std::vector<Model> children;
-            glm::mat4 local_transform;
-            glm::mat4 world_matrix;
-        };
 
         struct Light
         {
@@ -96,12 +88,4 @@ namespace Twilight
             glm::vec3 color;
         };
     }
-
-    // Very basic node right now that just has meshes because I will be changing up the scene graph later
-    struct SceneNode
-    {
-        std::shared_ptr<Render::Mesh> mesh;
-        std::vector<SceneNode> children;
-        glm::mat4 transform;
-    };
 }
