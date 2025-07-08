@@ -18,7 +18,7 @@ namespace Twilight
             Assimp::Importer importer;
             Render::Renderer* renderer = nullptr;
 
-            SceneNode load_node(aiNode* node, const aiScene* scene, const std::vector<uint32_t>& material_offsets, SceneNode& parent);
+            SceneNode load_node(aiNode* node, const aiScene* scene, const std::vector<uint32_t>& material_offsets, const glm::mat4& parent_transform);
             void load_vertices(const aiMesh* mesh, std::vector<Render::Vertex>& vertices);
             void load_indices(const aiMesh* mesh, std::vector<unsigned int>& indices);
             std::vector<uint32_t> load_materials(const aiScene* scene);

@@ -41,21 +41,17 @@ namespace Twilight
 
         // load_lights();
         // load_cameras();
-        SceneNode default_orientation = {
-            .local_transform = glm::mat4(1.0f),
-            .world_matrix = glm::mat4(1.0f)
-        };
 
-        SceneNode root = load_node(scene->mRootNode, scene, material_offsets, default_orientation);
+        SceneNode root = load_node(scene->mRootNode, scene, material_offsets, glm::mat4(1.0f));
 
         return root;
     }
 
-    SceneNode AssetManager::load_node(aiNode* node, const aiScene* scene, const std::vector<uint32_t>& material_offsets, SceneNode& parent)
+    SceneNode AssetManager::load_node(aiNode* node, const aiScene* scene, const std::vector<uint32_t>& material_offsets, const glm::mat4& parent_transform)
     {
         SceneNode scene_node = {};
         scene_node.local_transform = mat4x4_assimp_to_glm(node->mTransformation);
-        scene_node.world_matrix = parent.world_matrix * scene_node.local_transform;
+        scene_node.world_matrix = parent_transform * scene_node.local_transform;
         
         for(int mesh_idx = 0; mesh_idx < node->mNumMeshes; mesh_idx++)
         {
@@ -81,7 +77,7 @@ namespace Twilight
 
         for(int child_idx = 0; child_idx < node->mNumChildren; child_idx++)
         {
-            scene_node.children.push_back(load_node(node->mChildren[child_idx], scene, material_offsets, scene_node));
+            scene_node.children.push_back(load_node(node->mChildren[child_idx], scene, material_offsets, scene_node.world_matrix));
         }
 
         return scene_node;
