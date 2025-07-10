@@ -25,7 +25,7 @@ namespace Twilight
         this->renderer = renderer;
     }
 
-    SceneNode AssetManager::load_model(const std::string& path)
+    std::shared_ptr<SceneNode> AssetManager::load_model(const std::string& path)
     {
         // FIXME: hacky way to do this for now
 
@@ -42,16 +42,16 @@ namespace Twilight
         // load_lights();
         // load_cameras();
 
-        SceneNode root = load_node(scene->mRootNode, scene, material_offsets, glm::mat4(1.0f));
+        std::shared_ptr<SceneNode> root = load_node(scene->mRootNode, scene, material_offsets, glm::mat4(1.0f), nullptr);
 
         return root;
     }
 
-    SceneNode AssetManager::load_node(aiNode* node, const aiScene* scene, const std::vector<uint32_t>& material_offsets, const glm::mat4& parent_transform)
+    std::shared_ptr<SceneNode> AssetManager::load_node(aiNode* node, const aiScene* scene, const std::vector<uint32_t>& material_offsets, const glm::mat4& parent_transform, std::shared_ptr<SceneNode> parent)
     {
-        SceneNode scene_node = {};
-        scene_node.local_transform = mat4x4_assimp_to_glm(node->mTransformation);
-        scene_node.world_matrix = parent_transform * scene_node.local_transform;
+        std::shared_ptr<SceneNode> scene_node = std::make_shared<SceneNode>();
+        scene_node->local_transform = mat4x4_assimp_to_glm(node->mTransformation);
+        scene_node->world_matrix = parent_transform * scene_node->local_transform;
         
         for(int mesh_idx = 0; mesh_idx < node->mNumMeshes; mesh_idx++)
         {
@@ -72,13 +72,15 @@ namespace Twilight
 
             Render::Mesh node_mesh = renderer->create_mesh(vertices, indices, material_offsets[mesh->mMaterialIndex]);
 
-            scene_node.meshes.push_back(node_mesh);
+            scene_node->meshes.push_back(node_mesh);
         }
 
         for(int child_idx = 0; child_idx < node->mNumChildren; child_idx++)
         {
-            scene_node.children.push_back(load_node(node->mChildren[child_idx], scene, material_offsets, scene_node.world_matrix));
+            scene_node->children.push_back(load_node(node->mChildren[child_idx], scene, material_offsets, scene_node->world_matrix, scene_node));
         }
+
+        scene_node->parent = parent;
 
         return scene_node;
     }

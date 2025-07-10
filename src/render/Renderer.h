@@ -14,6 +14,8 @@ namespace Twilight
     namespace Render
     {
 
+        void SetMaterial(Mesh& mesh, uint32_t material_id);
+
         class Renderer
         {
             private:
@@ -149,7 +151,7 @@ namespace Twilight
                 uint32_t load_material(std::vector<MaterialConstantBinding> constant_bindings, std::vector<MaterialTextureBinding> texture_bindings);
                 uint32_t add_light(const Light& light);
                 //void remove_light(uint32_t id);
-                void draw(const SceneNode& node);
+                void draw(const std::shared_ptr<SceneNode> node);
                 void draw(const Mesh& mesh);
                 void present();
                 void wait();

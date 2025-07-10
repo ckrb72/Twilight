@@ -15,8 +15,7 @@
 /*
     TODO: 
         PBR Materials
-        Scene graph
-        Model rework
+        Scene graph (add lights and stuff)
         Camera movement
         Jolt integration
 */
@@ -24,32 +23,32 @@
 const int WIN_WIDTH = 1920, WIN_HEIGHT = 1080;
 
 // Temporary
-void free_node(Twilight::Render::Renderer* renderer, Twilight::SceneNode& node)
+void free_node(Twilight::Render::Renderer* renderer, std::shared_ptr<Twilight::SceneNode> node)
 {
-    for(Twilight::Render::Mesh& mesh : node.meshes)
+    for(Twilight::Render::Mesh& mesh : node->meshes)
     {
         renderer->destroy_mesh(mesh);
     }
 
-    for(Twilight::SceneNode& child : node.children)
+    for(std::shared_ptr<Twilight::SceneNode> child : node->children)
     {
         free_node(renderer, child);
     }
 }
 
-void print_matrices(const Twilight::SceneNode& node)
+void print_matrices(const std::shared_ptr<Twilight::SceneNode> node)
 {
     for(int i = 0; i < 4; i++)
     {
         for(int j = 0; j < 4; j++)
         {
-            std::cout << node.local_transform[i][j] << " ";
+            std::cout << node->local_transform[i][j] << " ";
         }
         std::cout << std::endl;
     }
     std::cout << std::endl;
 
-    for(const Twilight::SceneNode& child : node.children)
+    for(const std::shared_ptr<Twilight::SceneNode> child : node->children)
     {
         print_matrices(child);
     }
@@ -81,24 +80,14 @@ int main()
 
     Twilight::AssetManager asset_manager;
     asset_manager.init(&renderer);
-    Twilight::SceneNode little_guy = asset_manager.load_model("../little-guy.glb");
-    Twilight::SceneNode helmet = asset_manager.load_model("../DamagedHelmet.glb");
-    Twilight::SceneNode mech = asset_manager.load_model("../assets/halo_infinite_oddball.glb");
+
+    std::shared_ptr<Twilight::SceneNode> little_guy = asset_manager.load_model("../little-guy.glb");
+    std::shared_ptr<Twilight::SceneNode> helmet = asset_manager.load_model("../DamagedHelmet.glb");
+    std::shared_ptr<Twilight::SceneNode> mech = asset_manager.load_model("../assets/halo_infinite_oddball.glb");
 
     Twilight::Physics::PhysicsWorld world;
     world.init();
-    /* Twilight::Render::Material material = renderer->create_material(material_stuff) */
-    /* renderer->bind_material(material)*/
 
-    //renderer.add_light({glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(1.0f, 1.0f, 1.0f)});
-    //renderer.set_light_color(light_id, glm::vec3(1.0f, 0.0f, 0.0f));
-
-
-    // Create floor in physics world
-
-    // Create sphere collider for little guy
-
-    // each frame move little guy to the transform of the sphere collider
 
     double delta = 0.0f;
     double previous_time = glfwGetTime();
@@ -106,6 +95,7 @@ int main()
     float angle = 0.0f;
 
     Twilight::Scene::AppendChild(little_guy, helmet);
+    Twilight::Scene::SetTransform(helmet, glm::translate(glm::mat4(1.0f), glm::vec3(1.0f)) * glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)));
 
     while(!glfwWindowShouldClose(window))
     {
@@ -118,11 +108,9 @@ int main()
         world.update(delta);
 
         JPH::Mat44 box_transform_jph = world.get_transform_test();
-
         glm::mat4 box_transform = jph_to_glm(box_transform_jph);
 
         Twilight::Scene::SetTransform(little_guy, box_transform);
-        angle += 10.0f * delta;
         
         //renderer.draw(mech);
         renderer.draw(little_guy);
@@ -131,11 +119,12 @@ int main()
         renderer.present();
     }
     world.deinit();
-    // Fix free_node up so it actually frees the buffers at the correct time
+    
     renderer.wait();
     free_node(&renderer, little_guy);
     free_node(&renderer, helmet);
     free_node(&renderer, mech);
+
     renderer.deinit();
 
     glfwDestroyWindow(window);

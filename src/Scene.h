@@ -9,14 +9,24 @@ namespace Twilight
     struct SceneNode
     {
         std::vector<Render::Mesh> meshes;
-        std::vector<SceneNode> children;
+        std::vector<std::shared_ptr<SceneNode>> children;
         glm::mat4 local_transform;
         glm::mat4 world_matrix;
+        std::shared_ptr<SceneNode> parent;  // Problem with parent pointers (iterator invalidation when the vector the parent is stored in gets reallocated)
     };
+
+    /*struct Scene
+    {
+        std::vector<Render::Mesh> meshes;
+        std::vector<uint32_t> parents;
+        std::vector<glm::mat4> local_transforms;
+        std::vector<glm::mat4> world_matrices;
+    };*/
 
     namespace Scene
     {
-        void SetTransform(SceneNode& node, const glm::mat4& transform);
-        void AppendChild(SceneNode& parent, SceneNode& new_child);
+        void SetTransform(std::shared_ptr<SceneNode> node, const glm::mat4& transform);
+        void AppendChild(std::shared_ptr<SceneNode> new_parent, std::shared_ptr<SceneNode> new_child);
+        void AppendSibling(std::shared_ptr<SceneNode> sibling, std::shared_ptr<SceneNode> new_node);
     }
 }

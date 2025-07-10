@@ -549,14 +549,14 @@ namespace Twilight
 
 
         // TODO: Think about how to refactor this because not the best rn
-        void Renderer::draw(const SceneNode& node)
+        void Renderer::draw(const std::shared_ptr<SceneNode> node)
         {
-            for(const Mesh& mesh : node.meshes)
+            for(const Mesh& mesh : node->meshes)
             {
-                this->draw_list.push_back({mesh, node.world_matrix});
+                this->draw_list.push_back({mesh, node->world_matrix});
             }
 
-            for(const SceneNode& child : node.children)
+            for(const std::shared_ptr<SceneNode> child : node->children)
             {
                 draw(child);
             }
@@ -566,6 +566,12 @@ namespace Twilight
         {
             InternalFrameData* internal_data = &this->frames_intl[this->frame_count];
             FrameData* frame = &this->frames[this->frame_count];
+
+            // Temporary
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+            ImGui::ShowDemoWindow();
 
             frame_begin(frame, internal_data);
 
@@ -630,12 +636,6 @@ namespace Twilight
 
         void Renderer::draw_gui()
         {
-
-            // Temporary
-            ImGui_ImplVulkan_NewFrame();
-            ImGui_ImplGlfw_NewFrame();
-            ImGui::NewFrame();
-            ImGui::ShowDemoWindow();
             ImGui::Render();
 
             FrameData* frame = &this->frames[this->frame_count];
